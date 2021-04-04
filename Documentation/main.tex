@@ -1,0 +1,150 @@
+\documentclass{article}
+\usepackage{listings}
+\usepackage[T1]{fontenc}
+\usepackage{beramono}
+\usepackage[usenames,dvipsnames]{xcolor}
+\usepackage{color}
+\usepackage{fancyhdr}
+\usepackage{extramarks}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amsfonts}
+\usepackage{tikz}
+\usepackage{bold-extra}
+\usepackage[plain]{algorithm}
+\usepackage{algpseudocode}
+\usepackage{pdfpages}
+\usepackage[
+    backend=biber,
+    style=gb7714-2015,
+    gbalign=gb7714-2015,
+    gbnamefmt=lowercase,
+    gbpub=false,
+    doi=false,
+    url=false,
+    eprint=false,
+    isbn=false,
+]{biblatex}
+\addbibresource{misc/ref.bib}
+\usetikzlibrary{automata,positioning}
+
+\definecolor{mygreen}{RGB}{28,172,0} % color values Red, Green, Blue
+\definecolor{mylilas}{RGB}{170,55,241}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+%
+% Basic Document Settings
+%
+
+\topmargin=-0.45in
+\evensidemargin=0in
+\oddsidemargin=0in
+\textwidth=6.5in
+\textheight=9.0in
+\headsep=0.25in
+
+\linespread{1.1}
+
+\pagestyle{fancy}
+\lhead{\AuthorName}
+\rhead{\leftmark}
+\lfoot{\lastxmark}
+\cfoot{\thepage}
+
+\renewcommand\headrulewidth{0.4pt}
+\renewcommand\footrulewidth{0.4pt}
+
+\setlength\parindent{0pt}
+
+\setcounter{secnumdepth}{0}
+
+\newcommand{\Title}{ }
+\newcommand{\Class}{ }
+\newcommand{\AuthorName}{\textbf{ }}
+
+%
+% Title Page
+%
+
+\title{
+    \vspace{2in}
+    \textmd{\textbf{\Class:\ \Title}}\\
+    \vspace{3in}
+}
+
+\author{\AuthorName}
+\date\today
+
+\renewcommand{\part}[1]{\textbf{\large Part \Alph{partCounter}}\stepcounter{partCounter}\\}
+
+%
+% Various Helper Commands
+%
+
+% Useful for algorithms
+\newcommand{\alg}[1]{\textsc{\bfseries \footnotesize #1}}
+
+% For derivatives
+\newcommand{\deriv}[1]{\frac{\mathrm{d}}{\mathrm{d}x} (#1)}
+
+% For partial derivatives
+\newcommand{\pderiv}[2]{\frac{\partial}{\partial #1} (#2)}
+
+% Integral dx
+\newcommand{\dx}{\mathrm{d}x}
+
+% Alias for the Solution section header
+\newcommand{\solution}{\textbf{\large Solution}}
+
+% Probability commands: Expectation, Variance, Covariance, Bias
+\newcommand{\E}{\mathrm{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Cov}{\mathrm{Cov}}
+\newcommand{\Bias}{\mathrm{Bias}}
+
+% Julia language
+\lstdefinelanguage{Julia}%
+  {morekeywords={abstract,break,case,catch,const,continue,do,else,elseif,%
+      end,export,false,for,function,immutable,import,importall,if,in,%
+      macro,module,otherwise,quote,return,switch,true,try,type,typealias,%
+      using,while},%
+   sensitive=true,%
+   alsoother={$},%
+   morecomment=[l]\#,%
+   morecomment=[n]{\#=}{=\#},%
+   morestring=[s]{"}{"},%
+   morestring=[m]{'}{'},%
+}[keywords,comments,strings]%
+
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstset{%
+    language         = Julia,
+    basicstyle       = \ttfamily,
+    keywordstyle     = \bfseries\color{blue},
+    stringstyle      = \color{magenta},
+    commentstyle     = \color{ForestGreen},
+    showstringspaces = false,
+    backgroundcolor = \color{backcolour},
+    inputencoding = utf8,
+    extendedchars = true,
+    breaklines      =   true,
+    literate=%
+                {≈}{{$\approx$}}1
+                {π}{{$\pi$}}1
+                {∇}{{$\nabla$}}1
+}
+
+
+\begin{document}
+
+
+
+% \maketitle
+
+\pagebreak
+
+\input{Chapters/Chapter1.tex}
+\input{Chapters/Chapter2.tex}
+\input{Chapters/Appendix.tex}
+\input{misc/reference.tex}
+\end{document}

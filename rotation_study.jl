@@ -65,18 +65,21 @@ w = [1;2;3]
 @test RS.∇differential(q1) ≈ Lmat(q1_vec)*H
 
 
-@test Rotations.rmult(q1) ≈ Rmat(q1_vec)
+@test RS.rmult(q1) ≈ Rmat(q1_vec)
 
 v1 = @SVector rand(3)
 q = rand(UnitQuaternion)
 phi = [0.001; 0.005; -0.007]
 q_vec = Lmat(RS.params(q))*[1;phi]/(sqrt(1+norm(phi)^2))
 
+# TODO: find out why this test is failing
+@test RS.lmult(q) ≈ Lmat(RS.params(q))
+
 v_r1 = q*v1
 v_r2 = UnitQuaternion(q_vec)*v1
 
 #∇rotate(q,v1) is partial h partial q in Eqn.14 in "Planning with Attitude"
 
-v_r22 = q*v1 + Rotations.∇rotate(q,v1)*RS.∇differential(q)*phi
+v_r22 = q*v1 + RS.∇rotate(q,v1)*RS.∇differential(q)*phi
 @test v_r22 ≈ v_r2  atol=0.01
-@test ForwardDiff.jacobian(q->UnitQuaternion(q,false)*v1, Rotations.params(q)) ≈ Rotations.∇rotate(q,v1)
+@test ForwardDiff.jacobian(q->UnitQuaternion(q,false)*v1, RS.params(q)) ≈ RS.∇rotate(q,v1)
