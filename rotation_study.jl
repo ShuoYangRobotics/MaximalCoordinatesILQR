@@ -12,7 +12,7 @@ const H = [zeros(1,3); I]
 
 """Returns the cross product matrix """
 function cross_mat(v)
-    return [0 -v[3] v[2]; v[3] 0 -v[1]; -v[2] -v[1] 0]
+    return [0 -v[3] v[2]; v[3] 0 -v[1]; -v[2] v[1] 0]
 end 
 
 """Given quaternion q returns left multiply quaternion matrix L(q)"""
@@ -73,13 +73,14 @@ phi = [0.001; 0.005; -0.007]
 q_vec = Lmat(RS.params(q))*[1;phi]/(sqrt(1+norm(phi)^2))
 
 # TODO: find out why this test is failing
-@test RS.lmult(q) ≈ Lmat(RS.params(q))
+@test RS.rmult(RS.params(q)) ≈ Rmat(RS.params(q))
 
 v_r1 = q*v1
-v_r2 = UnitQuaternion(q_vec)*v1
+v_r2 = RS.UnitQuaternion(q_vec[1],q_vec[2],q_vec[3],q_vec[4])*v1
 
 #∇rotate(q,v1) is partial h partial q in Eqn.14 in "Planning with Attitude"
 
 v_r22 = q*v1 + RS.∇rotate(q,v1)*RS.∇differential(q)*phi
 @test v_r22 ≈ v_r2  atol=0.01
 @test ForwardDiff.jacobian(q->UnitQuaternion(q,false)*v1, RS.params(q)) ≈ RS.∇rotate(q,v1)
+
