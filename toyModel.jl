@@ -8,7 +8,6 @@ using StaticArrays
 
 timeStep = 10.0 # seconds
 # Parameters
-# TODO: figure out how to set mass
 
 """ Define the base """
 length1 = 0.5
@@ -32,6 +31,7 @@ q1 = UnitQuaternion(RotX(ϕ1))
 # Define base link
 origin = Origin{Float64}()
 link0 = Box(width, depth, length1, 1., color = RGBA(1., 1., 0.))
+link0.m = 10 # set base mass
 
 # Constraints on base
 # TODO: find what "Friction()" is doing
@@ -48,6 +48,10 @@ link1 = Box(arm_width, arm_depth, arm_length, arm_length, color = RGBA(0., 1., 0
 link2 = Box(arm_width, arm_depth, arm_length, arm_length, color = RGBA(0., 1., 1.))
 link3 = Box(arm_width, arm_depth, arm_length, arm_length, color = RGBA(0., 1., 0.))
 link4 = Box(arm_width, arm_depth, arm_length, arm_length, color = RGBA(0., 1., 1.))
+link1.m = 0.1
+link2.m = 0.1
+link3.m = 0.1
+link4.m = 0.1
 
 # Constraints on the arms
 joint1_axis = [0;0;1] # joint 1 rotates about z axis
@@ -90,9 +94,10 @@ setVelocity!(link4, v = [0;0;0], ω = [0;0;0])
 
 """ Define flotation force through controller """
 baseid = eqcs[1].id # this is the floating base, as a free joint
-mech.g = 0 # disable gravity
+mech.g = - 9.81 # set gravity
+# mech.g = 0 # disable gravity
 function controller!(mechanism, k)
-    F = SA[0;0;0]
+    F = SA[0;0; 9.81 * 10.4]
     τ = SA[0;0;0.01]
     setForce!(mechanism, geteqconstraint(mechanism,baseid), [F;τ])
     return
