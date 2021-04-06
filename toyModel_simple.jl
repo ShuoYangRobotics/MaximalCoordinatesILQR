@@ -26,7 +26,7 @@ function getStates(mech, sol=true)
     z = zeros(13*nb)
     for (i, body) in enumerate(mech.bodies)        
         xinds, vinds, qinds, ωinds = fullargsinds(i)
-        f = sol ? CD.fullargssol : CD.fullargsc
+        f = sol ? CD.fullargssol : CD.posargsk
         z[xinds],z[vinds],q,z[ωinds] = f(body.state)
         z[qinds] = RS.params(q)
     end
@@ -67,12 +67,33 @@ function generate_config(mech, body_pose::Vector{<:Number}, θ::Vector{<:Number}
     return generate_config(mech, body_pose, rotations)
 end
 
+# setposition setvelocity modifies state.xc qc..... 
 function setStates!(mech, z)
     for (i, body) in enumerate(mech.bodies)   
         xinds, vinds, qinds, ωinds = fullargsinds(i)   
         setPosition!(body; x = SVector{3}(z[xinds]), q = UnitQuaternion(z[qinds]...))
         setVelocity!(body; v = SVector{3}(z[vinds]), ω = SVector{3}(z[ωinds]))
     end
+end
+
+function state_parts(mech, x, u)
+    xd = SArray{Tuple{3},Float64,1,3}[]
+    vd = SArray{Tuple{3},Float64,1,3}[]
+    qd = UnitQuaternion{Float64}[]
+    ωd = SArray{Tuple{3},Float64,1,3}[]
+    Fτd = []
+    for i=1:2
+        xinds, vinds, qinds, ωinds = fullargsinds(i)
+        push!(xd, x[xinds])
+        push!(vd, x[vinds])
+        push!(qd, UnitQuaternion(x[qinds]...))
+        push!(ωd, x[ωinds])
+    end
+
+    push!(Fτd, SA[0.;0.;0.;0.;0.;0.])
+    push!(Fτd, SA[u[1]])
+
+    return xd, vd, qd, ωd, Fτd
 end
 
 """ Parameters """
@@ -136,10 +157,15 @@ mech = Mechanism(origin, links, eqcs, ineqcs) # TODO: this function is mutating!
 
 
 """ test state """
-x0 = generate_config(mech, [0.0;0.0;1.0;0.0], [pi/3]);
+x0 = generate_config(mech, [0.0;0.0;1.0;pi/6], [pi/3]);
+# x0 = generate_config(mech, [0.0;0.0;1.0;0.0], [0.0]);
+u0 = [0]
 reshape(x0,(13,2))'
 # visualize state 
 setStates!(mech,x0)
+CD.discretizestate!(mech) # I finally found that this is very important
+# each body.state has a lot of terms. setStates only modifies xc qc.. (continous state)
+# this discretizestate! convert xc to xk (discretized states)
 reshape(round.(getStates(mech)',digits=3),(13,2))'
 steps = Base.OneTo(1)
 storage = CD.Storage{Float64}(steps,length(mech.bodies))
@@ -150,6 +176,59 @@ for i=1:2
     storage.ω[i][1] = mech.bodies[i].state.ωc
 end
 visualize(mech,storage, env = "editor")
+
+bodyids = getid.(mech.bodies)
+eqcids = getid.(mech.eqconstraints)
+"""test constraint"""
+# this is in CD->main_components->equalityConstraint.jl
+constraint1 = CD.g(mech, geteqconstraint(mech, eqcids[2])) 
+eqc = geteqconstraint(mech, eqcids[2])
+c = CD.g(eqc.constraints[1], getbody(mech, eqc.parentid), getbody(mech, eqc.childids[1]), mech.Δt)# nonzero?
+# typeof(eqc.constraints[1]) ===> ConstrainedDynamics.Translational{Float64,3}
+# eqc.constraints[1] is a joint
+# the above function should be CD->joints->abstract_joint.jl line 14
+CD.constraintmat(eqc.constraints[1])
+c2 = CD.g(eqc.constraints[1], getbody(mech, eqc.parentid).state, getbody(mech, eqc.childids[1]).state,  mech.Δt)# nonzero?
+# the above function should be  CD->joints->joint.jl
+# these function uses xk qk . Why state has some many different terms?
+xa = CD.posargsnext(getbody(mech, eqc.parentid).state, mech.Δt)
+xb = CD.posargsnext(getbody(mech, eqc.childids[1]).state, mech.Δt)
+vertices = eqc.constraints[1].vertices # COM pos of front link and back link
+CD.vrotate(xb[1] + CD.vrotate(vertices[2], xb[2]) - (xa[1] + CD.vrotate(vertices[1], xa[2])), inv(xa[2]))
+
+""" test jacobian """
+xd, vd, qd, ωd, Fτd = state_parts(mech, x0,u0)
+# function test(mechanism, eqc::EqualityConstraint{T,N,Nc}, Fτ::AbstractVector) where {T,N,Nc}
+#     println(Nc)
+#     println(N)
+#     @assert length(Fτ)==3*Nc-N
+# end
+
+# for (i,id) in enumerate(eqcids)
+#     test(mech, geteqconstraint(mech, id), Fτd[i])
+# end
+A1, B1, C1, G1 = CC.linearsystem(mech, xd, vd, qd, ωd, Fτd, bodyids, eqcids) 
+
+dr = pi/19
+x1 = generate_config(mech, [0.0;0.0;1.0;pi/6+dr], [pi/3+dr]);
+xdp, vdp, qdp, ωdp, Fτd = state_parts(mech, x1,u0)
+# visualize state 
+setStates!(mech,x1)
+CD.discretizestate!(mech) 
+
+constraint2 = CD.g(mech, geteqconstraint(mech, eqcids[2])) 
+# get the rotation error 
+state_error = zeros(24)
+state_error[12*0 .+ (1:3)] = xdp[1]-xd[1]
+state_error[12*0 .+ (4:6)] = vdp[1]-vd[1]
+state_error[12*0 .+ (7:9)] = RS.rotation_error(qd[1],qdp[1], RS.CayleyMap())
+state_error[12*0 .+ (10:12)] = ωdp[1]-ωd[1]
+state_error[12*1 .+ (1:3)] = xdp[2]-xd[2]
+state_error[12*1 .+ (4:6)] = vdp[2]-vd[2]
+state_error[12*1 .+ (7:9)] = RS.rotation_error(qd[2],qdp[2], RS.CayleyMap())
+state_error[12*1 .+ (10:12)] = ωdp[2]-ωd[2]
+
+G1*state_error*mech.Δt # should be very close to zero 
 
 """ Define flotation force through controller """
 baseid = eqcs[1].id # this is the floating base, as a free joint
