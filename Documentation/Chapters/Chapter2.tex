@@ -1,44 +1,49 @@
-\section{Quaternion math}
-Define the unit quaternion as $\textbf{q} \in \mathbb{R}^4 := [q_s q_v^T]^T$ where $q_s \in \mathbb{R}$ and $q_v \in \mathbb{R}^3$.
+\section{Single rigid body with quaternion}
 
-We'll be using the following packages:
-\begin{lstlisting}
-using Rotations
-using LinearAlgebra
-using Test
-using StaticArrays
-using ForwardDiff
-const RS = Rotations
-\end{lstlisting}
-
-\subsection{Quaternion multiplication}
-Verifying quaternion multiplication using Rotation.jl:
-\lstinputlisting{codes/Quaternion_multiplication.jl}
-
-\subsection{Quaternion Differential Calculus}
-From section III in Planning with Attitude\cite{jackson2021planning},
-define a function with quaternion inputs $y=h(q): \mathbb{S}^3 \rightarrow \mathbb{R}^p$, such that:
+Consider a cubic base, noted as link 0, floating in space, we can define its state vector in the following form:
 \begin{equation}
-    y+\delta y = h(L(q)\phi(q)) \approx h(q) + \nabla h(q)\phi
-    \label{eq13}
+    \textbf{x} = \begin{bmatrix}
+        \textbf{r} \\  \textbf{q} \\ \textbf{v} \\ \text{\boldmath$\omega$}
+    \end{bmatrix} \in \mathbb{R}^{13}
 \end{equation}
-where $\phi \in \mathbb{R}^3$ is defined in body frame, representing a angular velocity.
-We can calculate the jacobian of this function $\nabla h(q) \in \mathbb{R}^{p \times 3}$ by differentiating (\ref{eq13}) wit respect to $\phi$, evaluated at $\phi = 0$:
+Where $\textbf{r}$ is the simplified form of $^{\mathcal{I}}\textbf{r}\in \mathbb{R}^3$ representing COM position in Inertial reference frame(world frame). $\textbf{q}$ is a unit quaternion representing rigid body's relative orientation to the world frame. $\textbf{v}$ and $\text{\boldmath$\omega$}$ are the linear velocity and angular velocity in body frame $\mathcal{L}_0$  respectively.
+
+On the input side, we start by assuming full control over force $^{\mathcal{L}_0}\textbf{F} \in \mathbb{R}^3$ and torque $^{\mathcal{L}_0}\text{\boldmath$\tau$} \in \mathbb{R}^3$:
 \begin{equation}
-    \nabla h(q) = \frac{\partial h}{\partial q}L(q)H := \frac{\partial h}{\partial q}G(q)
+    \textbf{u} = \begin{bmatrix}
+        \textbf{F} \\ \text{\boldmath$\tau$}
+    \end{bmatrix} \in \mathbb{R}^{6}
 \end{equation}
-where $G(q) \in \mathbb{R}^{4 \times 3}$ is the attitude Jacobian:
-\begin{lstlisting}
-    # a random quaternion
-    q = rand(UnitQuaternion)
-    q_vec = RS.params(q)
-    # G(q)
-    @test RS.∇differential(q) ≈ RS.lmult(q)*H
-\end{lstlisting}
-and $\frac{\partial h}{\partial q}$ is obtained by finite differences:
-\begin{lstlisting}
-    @test Rotations.∇rotate(q,v1) ≈ ForwardDiff.jacobian(q->UnitQuaternion(q,false)*v1, Rotations.params(q))
-\end{lstlisting}
-In the code above,function $h(q)$ is rotation of a vector $v1$.
+And then we adjust actuation by adjusting the $\textbf{B} \in \mathbb{R}^{6 \times 6}$ matrix.
+\subsection{Dynamic modeling}
+Linear velocity in world frame can be calculated by rotating body velocity vector $\textbf{v}$:
+\begin{equation}
+    \dot{\textbf{r}} = \textbf{q} \cdot \textbf{v}
+\end{equation}
+
+Quaternion rate $\dot{\textbf{q}}$:
+\begin{equation}
+    \dot{\textbf{q}} = \frac{1}{2}G(\textbf{q})\text{\boldmath$\omega$}
+\end{equation}
+
+Linear acceleration in body frame:
+\begin{equation}
+    \dot{\textbf{v}} = \frac{1}{m}\begin{bmatrix}
+        \textbf{I}_3 & 0
+    \end{bmatrix} \textbf{B}\textbf{u}
+\end{equation}
+
+Angular acceleration in body frame:
+\begin{equation}
+    \dot{\text{\boldmath$\omega$}} = \textbf{J}^{-1}\begin{bmatrix}
+        0 & \textbf{I}_3
+    \end{bmatrix} \textbf{B}\textbf{u}
+\end{equation}
+
+\subsubsection{Controlibility Analysis}\cite{jiang2020controllability}
+This is trickier than I though with quaternions in the state, the regular rank method doesn't seems to work.
+
+\subsection{Formulating a SQP}
+
 
 \pagebreak

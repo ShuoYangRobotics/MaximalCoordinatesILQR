@@ -1,5 +1,51 @@
-\section{Dynamic modeling}
+\section{Quaternion math}
+Define the unit quaternion as $\textbf{q} \in \mathbb{R}^4 := [q_s q_v^T]^T$ where $q_s \in \mathbb{R}$ and $q_v \in \mathbb{R}^3$.
 
+We'll be using the following packages:
+\begin{lstlisting}
+using Rotations
+using LinearAlgebra
+using Test
+using StaticArrays
+using ForwardDiff
+const RS = Rotations
+\end{lstlisting}
 
+\subsection{Quaternion multiplication}
+Verifying quaternion multiplication $\textbf{q}_1 \oplus \textbf{q}_2$ using Rotation.jl:
+\lstinputlisting{codes/Quaternion_multiplication.jl}
+Verifying transformation of a vector/point $\textbf{q}_1 \cdot \textbf{p}_A $ with quaternion
+\begin{lstlisting}
+# General vector/point A
+PA = [0;0;2]
+# Rotate π/2 along Y axis
+PB = H'*Lmat(q1_vec)*Rmat(q1_vec)'*H*PA
+@test PB ≈ q1*PA
+\end{lstlisting}
+\subsection{Quaternion Differential Calculus}
+From section III in Planning with Attitude\cite{jackson2021planning},
+define a function with quaternion inputs $y=h(q): \mathbb{S}^3 \rightarrow \mathbb{R}^p$, such that:
+\begin{equation}
+    y+\delta y = h(L(q)\phi(q)) \approx h(q) + \nabla h(q)\phi
+    \label{eq13}
+\end{equation}
+where $\phi \in \mathbb{R}^3$ is defined in body frame, representing a angular velocity.
+We can calculate the jacobian of this function $\nabla h(q) \in \mathbb{R}^{p \times 3}$ by differentiating (\ref{eq13}) wit respect to $\phi$, evaluated at $\phi = 0$:
+\begin{equation}
+    \nabla h(q) = \frac{\partial h}{\partial q}L(q)H := \frac{\partial h}{\partial q}G(q)
+\end{equation}
+where $G(q) \in \mathbb{R}^{4 \times 3}$ is the attitude Jacobian:
+\begin{lstlisting}
+    # a random quaternion
+    q = rand(UnitQuaternion)
+    q_vec = RS.params(q)
+    # G(q)
+    @test RS.∇differential(q) ≈ RS.lmult(q)*H
+\end{lstlisting}
+and $\frac{\partial h}{\partial q}$ is obtained by finite differences:
+\begin{lstlisting}
+    @test Rotations.∇rotate(q,v1) ≈ ForwardDiff.jacobian(q->UnitQuaternion(q,false)*v1, Rotations.params(q))
+\end{lstlisting}
+In the code above,function $h(q)$ is rotation of a vector $v1$.
 
 \pagebreak
