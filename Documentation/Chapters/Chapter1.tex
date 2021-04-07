@@ -1,7 +1,7 @@
 \section{Quaternion math}
-Define the unit quaternion as $\textbf{q} \in \mathbb{R}^4 := [q_s q_v^T]^T$ where $q_s \in \mathbb{R}$ and $q_v \in \mathbb{R}^3$.
+Define the unit quaternion as $\textbf{q} \in \mathbb{R}^4 := [q_s\ q_v^T]^T$ where $q_s \in \mathbb{R}$ and $q_v \in \mathbb{R}^3$.
 
-We'll be using the following packages:
+We'll be using the following packages for Julia implementation:
 \begin{lstlisting}
 using Rotations
 using LinearAlgebra
@@ -12,9 +12,11 @@ const RS = Rotations
 \end{lstlisting}
 
 \subsection{Quaternion multiplication}
-Verifying quaternion multiplication $\textbf{q}_1 \oplus \textbf{q}_2$ using Rotation.jl:
+As unit quaternions can be viewed as a pose, quaternion multiplication can be written as a pose composition $\textbf{q}_1 \oplus \textbf{q}_2$, and a quaternion-vector multiplication can be written as a transformation $\textbf{q}_1 \cdot \textbf{p}_A $, both are NOT standard matrix/vector multiplication.
+
+\subsubsection{Julia implementation}
 \lstinputlisting{codes/Quaternion_multiplication.jl}
-Verifying transformation of a vector/point $\textbf{q}_1 \cdot \textbf{p}_A $ with quaternion
+Verifying quaternion-vector multiplication:
 \begin{lstlisting}
 # General vector/point A
 PA = [0;0;2]
@@ -22,6 +24,8 @@ PA = [0;0;2]
 PB = H'*Lmat(q1_vec)*Rmat(q1_vec)'*H*PA
 @test PB ≈ q1*PA
 \end{lstlisting}
+
+
 \subsection{Quaternion Differential Calculus}
 From section III in Planning with Attitude\cite{jackson2021planning},
 define a function with quaternion inputs $y=h(q): \mathbb{S}^3 \rightarrow \mathbb{R}^p$, such that:
@@ -36,16 +40,31 @@ We can calculate the jacobian of this function $\nabla h(q) \in \mathbb{R}^{p \t
 \end{equation}
 where $G(q) \in \mathbb{R}^{4 \times 3}$ is the attitude Jacobian:
 \begin{lstlisting}
-    # a random quaternion
-    q = rand(UnitQuaternion)
-    q_vec = RS.params(q)
-    # G(q)
-    @test RS.∇differential(q) ≈ RS.lmult(q)*H
+# a random quaternion
+q = rand(UnitQuaternion)
+q_vec = RS.params(q)
+# G(q)
+@test RS.∇differential(q) ≈ RS.lmult(q)*H
 \end{lstlisting}
 and $\frac{\partial h}{\partial q}$ is obtained by finite differences:
 \begin{lstlisting}
-    @test Rotations.∇rotate(q,v1) ≈ ForwardDiff.jacobian(q->UnitQuaternion(q,false)*v1, Rotations.params(q))
+@test Rotations.∇rotate(q,v1) ≈ ForwardDiff.jacobian(q->UnitQuaternion(q,false)*v1, Rotations.params(q))
 \end{lstlisting}
 In the code above,function $h(q)$ is rotation of a vector $v1$.
+
+\subsection{Quaternion error state}
+The inverse Cayley map:
+\begin{equation}
+    \phi = \varphi ^{-1}(\textbf{q}) = \frac{q_v}{q_s} : \mathbb{R}^4 \rightarrow \mathbb{R}^3
+\end{equation}
+can be used to calculate the error of two quaternions defined as $\delta \textbf{q}$.
+\begin{equation}
+    \delta\textbf{q} = \varphi ^{-1}(\textbf{q}_2^{-1} \oplus \textbf{q}_1 )
+\end{equation}
+\subsubsection{Julia implimentation}
+
+\begin{lstlisting}
+@test RS.params(q2^(-1) * q1)[2:4] / (RS.params(q2^(-1) * q1)[1] ) ≈ RS.rotation_error(q1,q2, RS.CayleyMap())
+\end{lstlisting}
 
 \pagebreak

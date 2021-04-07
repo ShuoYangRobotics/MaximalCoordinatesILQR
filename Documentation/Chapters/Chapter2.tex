@@ -6,7 +6,7 @@ Consider a cubic base, noted as link 0, floating in space, we can define its sta
         \textbf{r} \\  \textbf{q} \\ \textbf{v} \\ \text{\boldmath$\omega$}
     \end{bmatrix} \in \mathbb{R}^{13}
 \end{equation}
-Where $\textbf{r}$ is the simplified form of $^{\mathcal{I}}\textbf{r}\in \mathbb{R}^3$ representing COM position in Inertial reference frame(world frame). $\textbf{q}$ is a unit quaternion representing rigid body's relative orientation to the world frame. $\textbf{v}$ and $\text{\boldmath$\omega$}$ are the linear velocity and angular velocity in body frame $\mathcal{L}_0$  respectively.
+Where $\textbf{r}$ is the simplified form of $^{\mathcal{I}}\textbf{r}\in \mathbb{R}^3$ representing COM position in Inertial reference frame(world frame). $\textbf{q}$ is a unit quaternion representing rigid body's relative orientation to the world frame. $\textbf{v}$ is the linear velocity in world frame, and $\text{\boldmath$\omega$}$ is angular velocity in body frame $\mathcal{L}_0$.
 
 On the input side, we start by assuming full control over force $^{\mathcal{L}_0}\textbf{F} \in \mathbb{R}^3$ and torque $^{\mathcal{L}_0}\text{\boldmath$\tau$} \in \mathbb{R}^3$:
 \begin{equation}
@@ -14,11 +14,11 @@ On the input side, we start by assuming full control over force $^{\mathcal{L}_0
         \textbf{F} \\ \text{\boldmath$\tau$}
     \end{bmatrix} \in \mathbb{R}^{6}
 \end{equation}
-And then we adjust actuation by adjusting the $\textbf{B} \in \mathbb{R}^{6 \times 6}$ matrix.
-\subsection{Dynamic modeling}
-Linear velocity in world frame can be calculated by rotating body velocity vector $\textbf{v}$:
+And then we simply constraint a input term to zero if we do not have full control.
+\subsection{Continues time dynamic modeling}
+Linear velocity in world frame is straightforward:
 \begin{equation}
-    \dot{\textbf{r}} = \textbf{q} \cdot \textbf{v}
+    \dot{\textbf{r}} = \textbf{v}
 \end{equation}
 
 Quaternion rate $\dot{\textbf{q}}$:
@@ -26,19 +26,84 @@ Quaternion rate $\dot{\textbf{q}}$:
     \dot{\textbf{q}} = \frac{1}{2}G(\textbf{q})\text{\boldmath$\omega$}
 \end{equation}
 
-Linear acceleration in body frame:
+Linear acceleration in world frame can be found by rotating input force in body frame:
 \begin{equation}
-    \dot{\textbf{v}} = \frac{1}{m}\begin{bmatrix}
+    \dot{\textbf{v}} = \frac{1}{m}\textbf{q} \cdot \begin{bmatrix}
         \textbf{I}_3 & 0
-    \end{bmatrix} \textbf{B}\textbf{u}
+    \end{bmatrix} \textbf{u}
 \end{equation}
 
-Angular acceleration in body frame:
+Angular acceleration in body frame from Euler's equation:
 \begin{equation}
-    \dot{\text{\boldmath$\omega$}} = \textbf{J}^{-1}\begin{bmatrix}
+    \dot{\text{\boldmath$\omega$}} = \textbf{J}^{-1}\left(\begin{bmatrix}
         0 & \textbf{I}_3
-    \end{bmatrix} \textbf{B}\textbf{u}
+    \end{bmatrix} \textbf{u} - \text{\boldmath$\omega$} \times \textbf{J}\text{\boldmath$\omega$} \right)
 \end{equation}
+
+\subsection{Discrete time dynamics and linearization}
+We need to analyze the problem in error state: given a reference $\bar{\textbf{x}}_k$, $\bar{\textbf{u}}_k$ for discrete-time system $f(\textbf{x}_k,\textbf{u}_k)$:
+
+\begin{equation}
+    f(\textbf{x}_k,\textbf{u}_k) = \begin{bmatrix}
+        \textbf{r}_k \\  \textbf{q}_k \\ \textbf{v}_k \\ \text{\boldmath$\omega$}_k
+    \end{bmatrix} + \begin{bmatrix}
+        \textbf{v}_k                                                         \\
+
+        \frac{1}{2}G(\textbf{q}_k)\text{\boldmath$\omega$}_k                 \\
+
+        \frac{1}{m}\textbf{q}_k \cdot \begin{bmatrix}
+            \textbf{I}_3 & 0
+        \end{bmatrix} \textbf{u}_k \\
+
+        \textbf{J}^{-1}\left(\begin{bmatrix}
+            0 & \textbf{I}_3
+        \end{bmatrix} \textbf{u}_k - \text{\boldmath$\omega$}_k \times \textbf{J}\text{\boldmath$\omega$}_k \right)
+    \end{bmatrix} dt
+\end{equation}
+NOTE: this is just a standard Euler step, we can also use RK4 or Symplectic Methods.
+\begin{equation}
+    \begin{aligned}
+        \bar{\textbf{x}}_{k+1} + \Delta\textbf{x}_{k+1}
+         & = f(\bar{\textbf{x}}_k + \Delta\textbf{x}_k, \bar{\textbf{u}}_k + \Delta\textbf{u}_k) \\
+         & \approx f(\bar{\textbf{x}}_k, \bar{\textbf{u}}_k) +
+        \frac{\partial f}{\partial \textbf{x}}\Big|_{\bar{\textbf{x}}_k, \bar{\textbf{u}}_k} \Delta\textbf{x}_k +
+        \frac{\partial f}{\partial \textbf{u}}\Big|_{\bar{\textbf{x}}_k, \bar{\textbf{u}}_k} \Delta\textbf{u}_k
+    \end{aligned}
+\end{equation}
+Here, $\frac{\partial f}{\partial \textbf{x}}\Big|_{\bar{\textbf{x}}_k, \bar{\textbf{u}}_k} \in \mathbb{R}^{13 \times 13} $, $\frac{\partial f}{\partial \textbf{u}}\Big|_{\bar{\textbf{x}}_k, \bar{\textbf{u}}_k} \in \mathbb{R}^{13 \times 6} $.
+
+We define a new error state vector $\delta \textbf{x} \in \mathbb{R}^{12}$:
+\begin{equation}
+    \delta \textbf{x}_{k} =
+    \begin{bmatrix}
+        \textbf{r}_k - \bar{\textbf{r}}_k                           \\
+        \varphi ^{-1}(\bar{\textbf{q}}_k^{-1} \oplus \textbf{q}_k ) \\
+        \textbf{v}_k - \bar{\textbf{v}}_k                           \\
+        \text{\boldmath$\omega$}_k - \bar{\text{\boldmath$\omega$}}_k
+    \end{bmatrix}
+\end{equation}
+Thus we can get:
+\begin{equation}
+    \begin{aligned}
+        \delta \textbf{x}_{k+1}
+         & = E(\bar{\textbf{x}}_{k+1})^T \frac{\partial f}{\partial \textbf{x}}\Big|_{\bar{\textbf{x}}_k, \bar{\textbf{u}}_k}E(\bar{\textbf{x}}_k) \delta\textbf{x}_k +
+        E(\bar{\textbf{x}}_{k+1})^T \frac{\partial f}{\partial \textbf{u}}\Big|_{\bar{\textbf{x}}_k, \bar{\textbf{u}}_k} \delta\textbf{u}_k                             \\
+         & = \textbf{A}_k \delta\textbf{x}_k + \textbf{B}_k \delta\textbf{u}_k
+    \end{aligned}
+\end{equation}
+Where:
+\begin{align}
+    E(\bar{\textbf{x}}) = \begin{bmatrix}
+        I_3 &                     &     &     \\
+            & G(\bar{\textbf{q}}) &     &     \\
+            &                     & I_3 &     \\
+            &                     &     & I_3
+    \end{bmatrix} & \in \mathbb{R}^{13 \times 12} \\
+    \delta \textbf{u}_k = \Delta \textbf{u}_k        & \in \mathbb{R}^{6 \times 1}   \\
+    \textbf{A}_k                                     & \in \mathbb{R}^{12 \times 12} \\
+    \textbf{B}_k                                     & \in \mathbb{R}^{12 \times 6}  \\
+\end{align}
+
 
 \subsubsection{Controlibility Analysis}\cite{jiang2020controllability}
 This is trickier than I though with quaternions in the state, the regular rank method doesn't seems to work.
