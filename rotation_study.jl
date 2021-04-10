@@ -12,7 +12,9 @@ const H = [zeros(1,3); I]
 
 """Returns the cross product matrix """
 function cross_mat(v)
-    return [0 -v[3] v[2]; v[3] 0 -v[1]; -v[2] v[1] 0]
+    return [    0   -v[3]   v[2]; 
+             v[3]       0  -v[1]; 
+            -v[2]    v[1]      0]
 end 
 
 """Given quaternion q returns left multiply quaternion matrix L(q)"""

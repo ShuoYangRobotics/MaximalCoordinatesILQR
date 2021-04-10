@@ -6,6 +6,7 @@ using ConstrainedDynamics
 using ConstrainedDynamicsVis
 using ConstrainedControl
 using StaticArrays
+using LinearAlgebra
 using Rotations
 
 const RS = Rotations
@@ -187,8 +188,8 @@ c = CD.g(eqc.constraints[1], getbody(mech, eqc.parentid), getbody(mech, eqc.chil
 # typeof(eqc.constraints[1]) ===> ConstrainedDynamics.Translational{Float64,3}
 # eqc.constraints[1] is a joint
 # the above function should be CD->joints->abstract_joint.jl line 14
-CD.constraintmat(eqc.constraints[1])
-c2 = CD.g(eqc.constraints[1], getbody(mech, eqc.parentid).state, getbody(mech, eqc.childids[1]).state,  mech.Δt)# nonzero?
+CD.constraintmat(eqc.constraints[2])
+c2 = CD.g(eqc.constraints[2], getbody(mech, eqc.parentid).state, getbody(mech, eqc.childids[1]).state,  mech.Δt)# nonzero?
 # the above function should be  CD->joints->joint.jl
 # these function uses xk qk . Why state has some many different terms?
 xa = CD.posargsnext(getbody(mech, eqc.parentid).state, mech.Δt)
@@ -196,7 +197,7 @@ xb = CD.posargsnext(getbody(mech, eqc.childids[1]).state, mech.Δt)
 vertices = eqc.constraints[1].vertices # COM pos of front link and back link
 CD.vrotate(xb[1] + CD.vrotate(vertices[2], xb[2]) - (xa[1] + CD.vrotate(vertices[1], xa[2])), inv(xa[2]))
 
-""" test jacobian """
+""" test constraint jacobian """
 xd, vd, qd, ωd, Fτd = state_parts(mech, x0,u0)
 # function test(mechanism, eqc::EqualityConstraint{T,N,Nc}, Fτ::AbstractVector) where {T,N,Nc}
 #     println(Nc)
@@ -218,17 +219,82 @@ CD.discretizestate!(mech)
 
 constraint2 = CD.g(mech, geteqconstraint(mech, eqcids[2])) 
 # get the rotation error 
+# x v q w 
 state_error = zeros(24)
 state_error[12*0 .+ (1:3)] = xdp[1]-xd[1]
 state_error[12*0 .+ (4:6)] = vdp[1]-vd[1]
-state_error[12*0 .+ (7:9)] = RS.rotation_error(qd[1],qdp[1], RS.CayleyMap())
+state_error[12*0 .+ (7:9)] = RS.rotation_error(qdp[1],qd[1], RS.QuatVecMap()) # Eqn 12  phi^{-1}(qdp*qd')
 state_error[12*0 .+ (10:12)] = ωdp[1]-ωd[1]
 state_error[12*1 .+ (1:3)] = xdp[2]-xd[2]
 state_error[12*1 .+ (4:6)] = vdp[2]-vd[2]
-state_error[12*1 .+ (7:9)] = RS.rotation_error(qd[2],qdp[2], RS.CayleyMap())
+state_error[12*1 .+ (7:9)] = RS.rotation_error(qdp[2],qd[2], RS.QuatVecMap())
 state_error[12*1 .+ (10:12)] = ωdp[2]-ωd[2]
 
-G1*state_error*mech.Δt # should be very close to zero 
+G1*state_error # should be very close to zero 
+
+""" try my own constraint and jacobian """
+function g(x,vertices)
+    r_a = SVector{3}(x[13*0 .+ (1:3)])
+    r_b = SVector{3}(x[13*1 .+ (1:3)])
+    q_a = SVector{4}(x[13*0 .+ (7:10)])
+    q_b = SVector{4}(x[13*1 .+ (7:10)])
+
+    val = zeros(5)
+    val[1:3] = (r_b + RS.vmat()*RS.rmult(q_b)'*RS.lmult(q_b)*RS.hmat()*vertices[2]) - 
+    (r_a + RS.vmat()*RS.rmult(q_a)'*RS.lmult(q_a)*RS.hmat()*vertices[1])
+    tmp = RS.vmat()*RS.lmult(q_a)'*q_b
+    val[4:5] = tmp[1:2]
+    return val
+end
+function Dg(x,vertices)
+    # j87y69i
+    q_a = SVector{4}(x[13*0 .+ (7:10)])
+    q_b = SVector{4}(x[13*1 .+ (7:10)])   #  q_b[1] q_w,  q_b[2] q_v1,  q_b[3] q_v2,  q_b[4] q_v3
+    Dgmtx = zeros(5,26)
+    Dgmtx[:,13*0 .+ (1:3)] = [-I;zeros(2,3)]  # dg/dra
+    Dgmtx[:,13*1 .+ (1:3)]  = [I;zeros(2,3)] # dg/drb
+    Dgmtx[:,13*0 .+ (7:10)] = [-2*RS.vmat()*RS.rmult(q_a)'*RS.rmult(RS.hmat()*vertices[1]);
+                            [q_b[3]  q_b[4] -q_b[1] -q_b[2];
+                             q_b[2] -q_b[1] -q_b[4] q_b[3]]
+                           ]
+    Dgmtx[:,13*1 .+ (7:10)] = [2*RS.vmat()*RS.rmult(q_b)'*RS.rmult(RS.hmat()*vertices[2]);
+                            [-q_a[3] -q_a[4]  q_a[1] q_a[2];
+                             -q_a[2]  q_a[1]  q_a[4] -q_a[3]]
+                           ]
+    return Dgmtx
+end
+gval = g(x0,vertices)
+Dgmtx = Dg(x0,vertices)
+
+# this is called state_diff_jacobian in Altro
+q_a0 = SVector{4}(x0[13*0 .+ (7:10)])
+q_b0 = SVector{4}(x0[13*1 .+ (7:10)])
+sdJ0 = zeros(26,24)
+sdJ0[13*0 .+ (1:3), 12*0 .+ (1:3)] = I(3)
+sdJ0[13*0 .+ (4:6), 12*0 .+ (4:6)] = I(3)
+sdJ0[13*0 .+ (7:10), 12*0 .+ (7:9)] = RS.∇differential(UnitQuaternion(q_a0))
+sdJ0[13*0 .+ (11:13), 12*0 .+ (10:12)] = I(3)
+sdJ0[13*1 .+ (1:3), 12*1 .+ (1:3)] = I(3)
+sdJ0[13*1 .+ (4:6), 12*1 .+ (4:6)] = I(3)
+sdJ0[13*1 .+ (7:10), 12*1 .+ (7:9)] = RS.∇differential(UnitQuaternion(q_b0))
+sdJ0[13*1 .+ (11:13), 12*1 .+ (10:12)] = I(3)
+
+q_a1 = SVector{4}(x1[13*0 .+ (7:10)])
+q_b1 = SVector{4}(x1[13*1 .+ (7:10)])
+sdJ1 = zeros(26,24)
+sdJ1[13*0 .+ (1:3), 12*0 .+ (1:3)] = I(3)
+sdJ1[13*0 .+ (4:6), 12*0 .+ (4:6)] = I(3)
+sdJ1[13*0 .+ (7:10), 12*0 .+ (7:9)] = RS.∇differential(UnitQuaternion(q_a1))
+sdJ1[13*0 .+ (11:13), 12*0 .+ (10:12)] = I(3)
+sdJ1[13*1 .+ (1:3), 12*1 .+ (1:3)] = I(3)
+sdJ1[13*1 .+ (4:6), 12*1 .+ (4:6)] = I(3)
+sdJ1[13*1 .+ (7:10), 12*1 .+ (7:9)] = RS.∇differential(UnitQuaternion(q_b1))
+sdJ1[13*1 .+ (11:13), 12*1 .+ (10:12)] = I(3)
+
+Dgmtx*sdJ1*state_error
+
+"""test A B C jaocbians"""
+
 
 """ Define flotation force through controller """
 baseid = eqcs[1].id # this is the floating base, as a free joint
