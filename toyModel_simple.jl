@@ -158,7 +158,11 @@ mech = Mechanism(origin, links, eqcs, ineqcs) # TODO: this function is mutating!
 
 
 """ test state """
-x0 = generate_config(mech, [0.0;0.0;1.0;pi/6], [pi/3]);
+x0 = generate_config(mech, [2.0;2.0;1.0;pi/2], [pi/2]);
+xd, vd, qd, ωd, Fτd = state_parts(mech, x0,u0)
+dr = pi/14
+x1 = generate_config(mech, [2.0;2.0;1.0;pi/2+dr], [pi/2+dr]);
+xdp, vdp, qdp, ωdp, Fτd = state_parts(mech, x1,u0)
 # x0 = generate_config(mech, [0.0;0.0;1.0;0.0], [0.0]);
 u0 = [0]
 reshape(x0,(13,2))'
@@ -198,7 +202,6 @@ vertices = eqc.constraints[1].vertices # COM pos of front link and back link
 CD.vrotate(xb[1] + CD.vrotate(vertices[2], xb[2]) - (xa[1] + CD.vrotate(vertices[1], xa[2])), inv(xa[2]))
 
 """ test constraint jacobian """
-xd, vd, qd, ωd, Fτd = state_parts(mech, x0,u0)
 # function test(mechanism, eqc::EqualityConstraint{T,N,Nc}, Fτ::AbstractVector) where {T,N,Nc}
 #     println(Nc)
 #     println(N)
@@ -210,9 +213,6 @@ xd, vd, qd, ωd, Fτd = state_parts(mech, x0,u0)
 # end
 A1, B1, C1, G1 = CC.linearsystem(mech, xd, vd, qd, ωd, Fτd, bodyids, eqcids) 
 
-dr = pi/19
-x1 = generate_config(mech, [0.0;0.0;1.0;pi/6+dr], [pi/3+dr]);
-xdp, vdp, qdp, ωdp, Fτd = state_parts(mech, x1,u0)
 # visualize state 
 setStates!(mech,x1)
 CD.discretizestate!(mech) 
@@ -221,16 +221,20 @@ constraint2 = CD.g(mech, geteqconstraint(mech, eqcids[2]))
 # get the rotation error 
 # x v q w 
 state_error = zeros(24)
+# x1 - x0
 state_error[12*0 .+ (1:3)] = xdp[1]-xd[1]
 state_error[12*0 .+ (4:6)] = vdp[1]-vd[1]
-state_error[12*0 .+ (7:9)] = RS.rotation_error(qdp[1],qd[1], RS.QuatVecMap()) # Eqn 12  phi^{-1}(qdp*qd')
+# about rotation error 
+#   q3 = q2*q1   --> q1 = q2\q3  === q2'*q3 
+#   rotation_error(R1 , R2 )  --->   dR = R2\R1 ==== R2'*R1   ---> R1 = R2*dR 
+state_error[12*0 .+ (7:9)] = RS.rotation_error(qdp[1],qd[1], RS.CayleyMap()) # Eqn 12  phi^{-1}(qdp'*qd)
 state_error[12*0 .+ (10:12)] = ωdp[1]-ωd[1]
 state_error[12*1 .+ (1:3)] = xdp[2]-xd[2]
 state_error[12*1 .+ (4:6)] = vdp[2]-vd[2]
-state_error[12*1 .+ (7:9)] = RS.rotation_error(qdp[2],qd[2], RS.QuatVecMap())
+state_error[12*1 .+ (7:9)] = RS.rotation_error(qdp[2],qd[2], RS.CayleyMap())
 state_error[12*1 .+ (10:12)] = ωdp[2]-ωd[2]
 
-G1*state_error # should be very close to zero 
+G1*state_error # should be very close to zero, but not, so Jan's code may have wrong Jacobian
 
 """ try my own constraint and jacobian """
 function g(x,vertices)
@@ -291,8 +295,10 @@ sdJ1[13*1 .+ (4:6), 12*1 .+ (4:6)] = I(3)
 sdJ1[13*1 .+ (7:10), 12*1 .+ (7:9)] = RS.∇differential(UnitQuaternion(q_b1))
 sdJ1[13*1 .+ (11:13), 12*1 .+ (10:12)] = I(3)
 
-Dgmtx*sdJ1*state_error
-
+# g(x1) = g(x0) + G(x0)*(x1-x0)
+# so G(x0)*(x1-x0) =  0
+Dgmtx*sdJ0*state_error   # this is not very close to 0
+Dgmtx*sdJ1*state_error   # this is closer to 0
 """test A B C jaocbians"""
 
 
