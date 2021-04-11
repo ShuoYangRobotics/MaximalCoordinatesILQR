@@ -7,6 +7,7 @@ using ConstrainedDynamicsVis
 using ConstrainedControl
 using StaticArrays
 using LinearAlgebra
+using SparseArrays
 using Rotations
 
 const RS = Rotations
@@ -136,6 +137,7 @@ arm_depth = 0.1
 
 # Define arm link
 link1 = Box(arm_width, arm_depth, arm_length, arm_length, color = RGBA(0., 1., 0.))
+link1.m = 1
 
 # Constraints on the arms
 joint1_axis = [0;0;1] # joint 1 rotates about z axis
@@ -267,6 +269,31 @@ function Dg(x,vertices)
                            ]
     return Dgmtx
 end
+
+# this calculates a part of Dg*attiG, only related to G_qa , dim is 5x3
+function Gqa(q_a,q_b,vertices)  
+    #  q_b[1] q_w,  q_b[2] q_v1,  q_b[3] q_v2,  q_b[4] q_v3
+    Dgmtx = [-2*RS.vmat()*RS.rmult(q_a)'*RS.rmult(RS.hmat()*vertices[1]);
+                            [q_b[3]  q_b[4] -q_b[1] -q_b[2];
+                             q_b[2] -q_b[1] -q_b[4] q_b[3]]
+                           ]
+    # Dgmtx[:,13*1 .+ (7:10)] = [2*RS.vmat()*RS.rmult(q_b)'*RS.rmult(RS.hmat()*vertices[2]);
+    #                         [-q_a[3] -q_a[4]  q_a[1] q_a[2];
+    #                          -q_a[2]  q_a[1]  q_a[4] -q_a[3]]
+    #                        ]
+    return Dgmtx*RS.lmult(q_a)*RS.hmat()
+end
+
+# this calculates a part of Dg*attiG, only related to G_qb, dim is 5x3
+function Gqb(q_a,q_b,vertices)  
+    #  q_b[1] q_w,  q_b[2] q_v1,  q_b[3] q_v2,  q_b[4] q_v3
+    Dgmtx = [2*RS.vmat()*RS.rmult(q_b)'*RS.rmult(RS.hmat()*vertices[2]);
+                            [-q_a[3] -q_a[4]  q_a[1] q_a[2];
+                             -q_a[2]  q_a[1]  q_a[4] -q_a[3]]
+                           ]
+    return Dgmtx*RS.lmult(q_b)*RS.hmat()
+end
+
 gval = g(x0,vertices)
 Dgmtx = Dg(x0,vertices)
 
@@ -298,8 +325,229 @@ sdJ1[13*1 .+ (11:13), 12*1 .+ (10:12)] = I(3)
 # g(x1) = g(x0) + G(x0)*(x1-x0)
 # so G(x0)*(x1-x0) =  0
 Dgmtx*sdJ0*state_error   # this is not very close to 0
-Dgmtx*sdJ1*state_error   # this is closer to 0
+Dgmtx*sdJ1*state_error   # this is not very close to 0
+
+#why this happens? further dig into rotation error
+xxx = RS.rotation_error(qdp[1],qd[1], RS.CayleyMap())
+qdc  = RS.lmult(qd[1])*1/sqrt(1+norm(xxx)^2)*[1;xxx]
+UnitQuaternion(qdc) ≈ qdp[1]
+# function q = q
+kk = RS.∇differential(UnitQuaternion(q_a0))'*RS.∇differential(UnitQuaternion(q_a0))*xxx
+UnitQuaternion(RS.lmult(qd[1])*1/sqrt(1+norm(kk)^2)*[1;kk]) ≈ qdp[1]
+
 """test A B C jaocbians"""
+
+# xt1 26, xt 26, 
+function fdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
+
+    fdyn_vec = zeros(26)
+
+    rat1 = view(xt1,13*0 .+ (1:3))
+    vat1 = view(xt1,13*0 .+ (4:6))
+    qat1 = SVector{4}(xt1[13*0 .+ (7:10)])
+    wat1 = view(xt1,13*0 .+ (11:13))
+
+
+    rbt1 = view(xt1,13*1 .+ (1:3))
+    vbt1 = view(xt1,13*1 .+ (4:6))
+    qbt1 = SVector{4}(xt1[13*1 .+ (7:10)])
+    wbt1 = view(xt1,13*1 .+ (11:13))
+
+    rat = view(xt,13*0 .+ (1:3))
+    vat = view(xt,13*0 .+ (4:6))
+    qat = SVector{4}(xt[13*0 .+ (7:10)])
+    wat = view(xt,13*0 .+ (11:13))
+
+    rbt = view(xt,13*1 .+ (1:3))
+    vbt = view(xt,13*1 .+ (4:6))
+    qbt = SVector{4}(xt[13*1 .+ (7:10)])
+    wbt = view(xt,13*1 .+ (11:13))
+
+    Ft = ut[1:3]
+    taut = ut[4:6]
+    tau_joint = ut[7]
+
+    fdyn_vec[1:3] = rat1 - (rat + vat*Δt)
+    fdyn_vec[4:6] = rbt1 - (rbt + vbt*Δt)
+    Ma = diagm([ma,ma,ma])
+    Mb = diagm([mb,mb,mb])
+    # eqn 3 4 in my notes, notice gravity direction,    Gra's express
+    fdyn_vec[7:9] = Ma*(vat1-vat)+Ma*[0;0;9.81]*Δt - Ft*Δt - [-I;zeros(2,3)]'*λt*Δt   # Gra'λ
+    fdyn_vec[10:12] = Mb*(vbt1-vbt)+Mb*[0;0;9.81]*Δt - [I;zeros(2,3)]'*λt*Δt  # Grb'λ
+
+    # eqn 5 6 , become harder
+    fdyn_vec[13:16] = qat1 - Δt/2*RS.lmult(qat)*SVector{4}([sqrt(4/Δt^2 -wat'*wat);wat])
+    fdyn_vec[17:20] = qbt1 - Δt/2*RS.lmult(qbt)*SVector{4}([sqrt(4/Δt^2 -wbt'*wbt);wbt])
+
+    # eqn 7 8
+    Gqamtx = Gqa(qat,qbt,vertices) 
+    Gqbmtx = Gqb(qat,qbt,vertices) 
+    fdyn_vec[21:23] = Ja * wat1 * sqrt(4/Δt^2 -wat1'*wat1) + wat1 × (Ja * wat1) 
+                    - Ja * wat  * sqrt(4/Δt^2 - wat'*wat) + wat  × (Ja * wat) - 2taut + 2*[0;0;tau_joint] - Gqamtx'*λt
+    fdyn_vec[24:26] = Jb * wbt1 * sqrt(4/Δt^2 -wbt1'*wbt1) + wbt1 × (Jb * wbt1) 
+                    - Jb * wbt  * sqrt(4/Δt^2 - wbt'*wbt) + wbt  × (Jb * wbt)         - 2*[0;0;tau_joint] - Gqbmtx'*λt
+    return fdyn_vec
+end
+
+# the jacobian of the function fdyn
+function Dfdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
+    Dfmtx = spzeros(26, 64)
+    qat1 = SVector{4}(xt1[(13*0).+ (7:10)])
+    wat1 = view(xt1,(13*0).+ (11:13))
+    qbt1 = SVector{4}(xt1[(13*1).+ (7:10)])
+    wbt1 = view(xt1,(13*1).+ (11:13))
+    qat = SVector{4}(xt[(13*0).+ (7:10)])
+    wat = view(xt,(13*0).+ (11:13))
+    qbt = SVector{4}(xt[(13*1).+ (7:10)])
+    wbt = view(xt,(13*1).+ (11:13))
+
+    Ma = diagm([ma,ma,ma])
+    Mb = diagm([mb,mb,mb])
+    Gqamtx = Gqa(qat,qbt,vertices) 
+    Gqbmtx = Gqb(qat,qbt,vertices) 
+    dt = Δt
+    # derivative of eqn 1
+    Dfmtx[1:3, (13*0).+(1:3)] = I(3)                           # 3x3 
+    Dfmtx[1:3, (26 + 13*0).+(1:3)] = -I(3)                     # 3x3
+    Dfmtx[1:3, (26 + 13*0).+(4:6)] = -I(3)*Δt                  # 3x3
+    # derivative of eqn 2
+    Dfmtx[4:6, (13*1).+(1:3)] = I(3)                           # 3x3
+    Dfmtx[4:6, (26 + 13*1).+(1:3)] = -I(3)                     # 3x3
+    Dfmtx[4:6, (26 + 13*1).+(4:6)] = -I(3)*Δt                  # 3x3
+    # derivative of eqn 3 
+    Dfmtx[7:9, (13*0).+(4:6)] = Ma                             # 3x3
+    Dfmtx[7:9, (26 + 13*0).+(4:6)] = -Ma                       # 3x3
+    Dfmtx[7:9, (26 + 26).+(1:3)] = -I(3)*Δt                    # 3x3
+    Dfmtx[7:9, (26 + 26 + 7).+(1:5)] = - [-I;zeros(2,3)]'*Δt   # 3x3
+    # derivative of eqn 4 
+    Dfmtx[10:12, (13*1).+(4:6)] = Mb                           # 3x3
+    Dfmtx[10:12, (26 + 13*1).+(4:6)] = -Mb                     # 3x3
+    Dfmtx[10:12, (26 + 26 + 7).+(1:5)] = - [I;zeros(2,3)]'*Δt  # 3x3
+    # derivative of eqn 5   
+    Dfmtx[13:16, (13*0).+(7:10)] = I(4)                        # 4x4
+    Dfmtx[13:16, (26 + 13*0).+(7:10)] = -Δt/2*RS.rmult(SVector{4}([sqrt(4/Δt^2 -wat'*wat);wat]))   # 4x4
+    Dfmtx[13:16, (26 + 13*0).+(11:13)] = -Δt/2*qat*wat'/sqrt(4/Δt^2 -wat'*wat) + RS.lmult(qat)*RS.hmat()   # 4x3
+    # derivative of eqn 6   
+    Dfmtx[17:20, (13*1).+(7:10)] = I(4)                        # 4x4
+    Dfmtx[17:20, (26 + 13*1).+(7:10)] = -Δt/2*RS.rmult(SVector{4}([sqrt(4/Δt^2 -wbt'*wbt);wbt]))   # 4x4
+    Dfmtx[17:20, (26 + 13*1).+(11:13)] = -Δt/2*qbt*wbt'/sqrt(4/Δt^2 -wbt'*wbt) + RS.lmult(qbt)*RS.hmat()   # 4x3
+    # derivative of eqn 7 (very challenging)
+    # d (Ja * wat1 * sqrt(4/Δt^2 -wat1'*wat1) + wat1 × (Ja * wat1)) / d wat1
+    J11 = Ja[1,1];J12 = Ja[1,2];J13 = Ja[1,3];
+    J21 = Ja[2,1];J22 = Ja[2,2];J23 = Ja[2,3];
+    J31 = Ja[3,1];J32 = Ja[3,2];J33 = Ja[3,3];
+    w1 = wat1[1]; w2 = wat1[2]; w3 = wat1[3];
+    row1 = [                    J31*w2 - J21*w3 + J11*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J31*w1 - J22*w3 + 2*J32*w2 + J33*w3 + J12*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J33*w2 - J22*w2 - 2*J23*w3 - J21*w1 + J13*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+    row2 = [J11*w3 - 2*J31*w1 - J32*w2 - J33*w3 + J21*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J12*w3 - J32*w1 + J22*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J11*w1 + J12*w2 + 2*J13*w3 - J33*w1 + J23*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+    row3 = [2*J21*w1 - J11*w2 + J22*w2 + J23*w3 + J31*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J22*w1 - 2*J12*w2 - J13*w3 - J11*w1 + J32*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J23*w1 - J13*w2 + J33*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+    Dfmtx[21:23, (13*0).+(11:13)] = [row1 row2 row3]'
+
+
+    # d G_qat'*λt /dqat  3x4. copy matlab code, then replace matlab symbol with Julia variables
+    la1 = λt[1];la2 = λt[2];la3 = λt[3];la4 = λt[4];la5 = λt[5];
+    aw = qat[1]; av1 = qat[2]; av2 = qat[3]; av3 = qat[4];
+    pa1 = vertices[1][1]; pa2 = vertices[1][2]; pa3 = vertices[1][3]
+    row1 = [  la2*(2*av1*pa2 + 2*av2*pa1 + 2*aw*pa3) - la1*(2*av2*pa2 - 2*av1*pa1 + 2*av3*pa3) + la3*(2*av1*pa3 + 2*av3*pa1 - 2*aw*pa2),    
+       la3*(2*av1*pa2 + 2*av2*pa1 + 2*aw*pa3) - la2*(2*av1*pa3 + 2*av3*pa1 - 2*aw*pa2) - la1*(2*av3*pa2 - 2*av2*pa3 + 2*aw*pa1),   
+       la3*(2*av2*pa2 - 2*av1*pa1 + 2*av3*pa3) + la1*(2*av1*pa3 + 2*av3*pa1 - 2*aw*pa2) - la2*(2*av3*pa2 - 2*av2*pa3 + 2*aw*pa1), 
+     - la2*(2*av2*pa2 - 2*av1*pa1 + 2*av3*pa3) - la1*(2*av1*pa2 + 2*av2*pa1 + 2*aw*pa3) - la3*(2*av3*pa2 - 2*av2*pa3 + 2*aw*pa1)]
+    row2 = [  la1*(2*av1*pa2 + 2*av2*pa1 - 2*aw*pa3) - la2*(2*av1*pa1 - 2*av2*pa2 + 2*av3*pa3) + la3*(2*av2*pa3 + 2*av3*pa2 + 2*aw*pa1), 
+     - la3*(2*av1*pa1 - 2*av2*pa2 + 2*av3*pa3) - la1*(2*av1*pa3 - 2*av3*pa1 + 2*aw*pa2) - la2*(2*av2*pa3 + 2*av3*pa2 + 2*aw*pa1),    
+       la1*(2*av2*pa3 + 2*av3*pa2 + 2*aw*pa1) - la2*(2*av1*pa3 - 2*av3*pa1 + 2*aw*pa2) - la3*(2*av1*pa2 + 2*av2*pa1 - 2*aw*pa3),   
+       la1*(2*av1*pa1 - 2*av2*pa2 + 2*av3*pa3) + la2*(2*av1*pa2 + 2*av2*pa1 - 2*aw*pa3) - la3*(2*av1*pa3 - 2*av3*pa1 + 2*aw*pa2)]
+    row3 = [  la1*(2*av1*pa3 + 2*av3*pa1 + 2*aw*pa2) - la3*(2*av1*pa1 + 2*av2*pa2 - 2*av3*pa3) + la2*(2*av2*pa3 + 2*av3*pa2 - 2*aw*pa1),   
+       la2*(2*av1*pa1 + 2*av2*pa2 - 2*av3*pa3) - la1*(2*av2*pa1 - 2*av1*pa2 + 2*aw*pa3) + la3*(2*av2*pa3 + 2*av3*pa2 - 2*aw*pa1), 
+     - la1*(2*av1*pa1 + 2*av2*pa2 - 2*av3*pa3) - la2*(2*av2*pa1 - 2*av1*pa2 + 2*aw*pa3) - la3*(2*av1*pa3 + 2*av3*pa1 + 2*aw*pa2),    
+       la2*(2*av1*pa3 + 2*av3*pa1 + 2*aw*pa2) - la1*(2*av2*pa3 + 2*av3*pa2 - 2*aw*pa1) - la3*(2*av2*pa1 - 2*av1*pa2 + 2*aw*pa3)]
+    Dfmtx[21:23, (26 + 13*0).+(7:10)] = -[row1 row2 row3]'  # in the eqn 7 we have -G_qat'*λt
+
+    # d (- Ja * wat  * sqrt(4/Δt^2 - wat'*wat) + wat  × (Ja * wat)) / dwat
+    w1 = wat[1]; w2 = wat[2]; w3 = wat[3];
+    row1 = [                    J31*w2 - J21*w3 - J11*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J31*w1 - J22*w3 + 2*J32*w2 + J33*w3 - J12*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J33*w2 - J22*w2 - 2*J23*w3 - J21*w1 - J13*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+    row2 = [J11*w3 - 2*J31*w1 - J32*w2 - J33*w3 - J21*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J12*w3 - J32*w1 - J22*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J11*w1 + J12*w2 + 2*J13*w3 - J33*w1 - J23*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+    row3 = [2*J21*w1 - J11*w2 + J22*w2 + J23*w3 - J31*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J22*w1 - 2*J12*w2 - J13*w3 - J11*w1 - J32*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J23*w1 - J13*w2 - J33*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+    Dfmtx[21:23, (26 + 13*0).+(11:13)] = [row1 row2 row3]'
+
+    # d G_qat'*λt /dqbt  3x4.
+    row1 = [- av3*la4 - aw*la5,   av2*la4 - av1*la5, - av1*la4 - av2*la5,   aw*la4 - av3*la5]
+    row2 = [  av3*la5 - aw*la4, - av1*la4 - av2*la5,   av1*la5 - av2*la4, - av3*la4 - aw*la5]
+    row3 = [ av1*la4 - av2*la5,  - av3*la5 - aw*la4,    aw*la5 - av3*la4,  av1*la5 + av2*la4]
+    Dfmtx[21:23, (26 + 13*1).+(7:10)] =  -[row1 row2 row3]'  # in the eqn 7 we have -G_qat'*λt
+
+    Dfmtx[21:23, (26 + 26).+(4:6)] =  -2*I(3)
+    Dfmtx[21:23, (26 + 26).+(7)] =  [0;0;2]
+    Dfmtx[21:23, (26 + 26 + 7).+(1:5)] = -Gqamtx' 
+    # derivative of eqn 8 (very challenging)
+    # d (Jb * wbt1 * sqrt(4/Δt^2 -wbt1'*wbt1) + wbt1 × (Jb * wbt1)) / d wbt1
+    J11 = Jb[1,1];J12 = Jb[1,2];J13 = Jb[1,3];
+    J21 = Jb[2,1];J22 = Jb[2,2];J23 = Jb[2,3];
+    J31 = Jb[3,1];J32 = Jb[3,2];J33 = Jb[3,3];
+    w1 = wbt1[1]; w2 = wbt1[2]; w3 = wbt1[3];
+    row1 = [                    J31*w2 - J21*w3 + J11*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J31*w1 - J22*w3 + 2*J32*w2 + J33*w3 + J12*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J33*w2 - J22*w2 - 2*J23*w3 - J21*w1 + J13*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+    row2 = [J11*w3 - 2*J31*w1 - J32*w2 - J33*w3 + J21*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J12*w3 - J32*w1 + J22*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J11*w1 + J12*w2 + 2*J13*w3 - J33*w1 + J23*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+    row3 = [2*J21*w1 - J11*w2 + J22*w2 + J23*w3 + J31*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J22*w1 - 2*J12*w2 - J13*w3 - J11*w1 + J32*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J23*w1 - J13*w2 + J33*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+    Dfmtx[24:26, (13*1).+(11:13)] = [row1 row2 row3]'
+
+    # d G_qbt'*λt /dqat  3x4.
+    bw = qbt[1]; bv1 = qbt[2]; bv2 = qbt[3]; bv3 = qbt[4];
+    pb1 = vertices[2][1]; pb2 = vertices[2][2]; pb3 = vertices[2][3]
+    row1 = [ bv3*la4 + bw*la5, bv1*la5 - bv2*la4, bv1*la4 + bv2*la5,    bv3*la5 - bw*la4]
+    row2 = [ bw*la4 - bv3*la5, bv1*la4 + bv2*la5, bv2*la4 - bv1*la5,    bv3*la4 + bw*la5]
+    row3 = [bv2*la5 - bv1*la4,  bv3*la5 + bw*la4,  bv3*la4 - bw*la5, - bv1*la5 - bv2*la4]
+    Dfmtx[24:26, (26 + 13*0).+(7:10)] =  -[row1 row2 row3]'  # in the eqn 8 we have -G_qbt'*λt
+    # d G_qbt'*λt /dqbt  3x4.
+    row1 = [la1*(2*bv2*pb2 - 2*bv1*pb1 + 2*bv3*pb3) - la2*(2*bv1*pb2 + 2*bv2*pb1 + 2*bw*pb3) - la3*(2*bv1*pb3 + 2*bv3*pb1 - 2*bw*pb2),  la1*(2*bv3*pb2 - 2*bv2*pb3 + 2*bw*pb1) + la2*(2*bv1*pb3 + 2*bv3*pb1 - 2*bw*pb2) - la3*(2*bv1*pb2 + 2*bv2*pb1 + 2*bw*pb3), la2*(2*bv3*pb2 - 2*bv2*pb3 + 2*bw*pb1) - la1*(2*bv1*pb3 + 2*bv3*pb1 - 2*bw*pb2) - la3*(2*bv2*pb2 - 2*bv1*pb1 + 2*bv3*pb3), la2*(2*bv2*pb2 - 2*bv1*pb1 + 2*bv3*pb3) + la1*(2*bv1*pb2 + 2*bv2*pb1 + 2*bw*pb3) + la3*(2*bv3*pb2 - 2*bv2*pb3 + 2*bw*pb1)]
+    row2 = [la2*(2*bv1*pb1 - 2*bv2*pb2 + 2*bv3*pb3) - la1*(2*bv1*pb2 + 2*bv2*pb1 - 2*bw*pb3) - la3*(2*bv2*pb3 + 2*bv3*pb2 + 2*bw*pb1), la3*(2*bv1*pb1 - 2*bv2*pb2 + 2*bv3*pb3) + la1*(2*bv1*pb3 - 2*bv3*pb1 + 2*bw*pb2) + la2*(2*bv2*pb3 + 2*bv3*pb2 + 2*bw*pb1),  la2*(2*bv1*pb3 - 2*bv3*pb1 + 2*bw*pb2) - la1*(2*bv2*pb3 + 2*bv3*pb2 + 2*bw*pb1) + la3*(2*bv1*pb2 + 2*bv2*pb1 - 2*bw*pb3), la3*(2*bv1*pb3 - 2*bv3*pb1 + 2*bw*pb2) - la2*(2*bv1*pb2 + 2*bv2*pb1 - 2*bw*pb3) - la1*(2*bv1*pb1 - 2*bv2*pb2 + 2*bv3*pb3)]
+    row3 = [la3*(2*bv1*pb1 + 2*bv2*pb2 - 2*bv3*pb3) - la1*(2*bv1*pb3 + 2*bv3*pb1 + 2*bw*pb2) - la2*(2*bv2*pb3 + 2*bv3*pb2 - 2*bw*pb1), la1*(2*bv2*pb1 - 2*bv1*pb2 + 2*bw*pb3) - la2*(2*bv1*pb1 + 2*bv2*pb2 - 2*bv3*pb3) - la3*(2*bv2*pb3 + 2*bv3*pb2 - 2*bw*pb1), la1*(2*bv1*pb1 + 2*bv2*pb2 - 2*bv3*pb3) + la2*(2*bv2*pb1 - 2*bv1*pb2 + 2*bw*pb3) + la3*(2*bv1*pb3 + 2*bv3*pb1 + 2*bw*pb2),  la1*(2*bv2*pb3 + 2*bv3*pb2 - 2*bw*pb1) - la2*(2*bv1*pb3 + 2*bv3*pb1 + 2*bw*pb2) + la3*(2*bv2*pb1 - 2*bv1*pb2 + 2*bw*pb3)]
+    Dfmtx[24:26, (26 + 13*1).+(7:10)] =  -[row1 row2 row3]'  # in the eqn 8 we have -G_qbt'*λt
+
+    # d (- Jb * wbt  * sqrt(4/Δt^2 - wbt'*wbt) + wbt  × (Jb * wbt)) / dwbt
+    w1 = wbt[1]; w2 = wbt[2]; w3 = wbt[3];
+    row1 = [                    J31*w2 - J21*w3 - J11*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J31*w1 - J22*w3 + 2*J32*w2 + J33*w3 - J12*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J33*w2 - J22*w2 - 2*J23*w3 - J21*w1 - J13*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+    row2 = [J11*w3 - 2*J31*w1 - J32*w2 - J33*w3 - J21*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J12*w3 - J32*w1 - J22*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J11*w1 + J12*w2 + 2*J13*w3 - J33*w1 - J23*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+    row3 = [2*J21*w1 - J11*w2 + J22*w2 + J23*w3 - J31*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J22*w1 - 2*J12*w2 - J13*w3 - J11*w1 - J32*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J23*w1 - J13*w2 - J33*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
+    Dfmtx[24:26, (26 + 13*1).+(11:13)] =[row1 row2 row3]'
+
+    Dfmtx[24:26, (26 + 26).+(7)] =  [0;0;-2]
+    Dfmtx[24:26, (26 + 26 + 7).+(1:5)] = -Gqbmtx'
+    
+    return Dfmtx
+end
+
+# attitude Jacobian So that Dfmtx * attiG_mtx ==> size(26,60) where 60 is the size of error state 
+# this is really cumbersome to manually construct. something like state_diff_jacobian in Altro is definitely better
+function attiG_f(xt1, xt)
+    attiG_mtx = spzeros(64, 60)
+    qat1 = SVector{4}(xt1[13*0 .+ (7:10)])
+    qbt1 = SVector{4}(xt1[13*1 .+ (7:10)])
+    qat = SVector{4}(xt[13*0 .+ (7:10)])
+    qbt = SVector{4}(xt[13*1 .+ (7:10)])
+    attiG_mtx[1:6,1:6] = I(6)
+    attiG_mtx[7:10,7:9] = RS.lmult(qat1)*RS.hmat()
+    attiG_mtx[11:13,10:12] = I(3)
+    attiG_mtx[(13*1).+(1:6), (12*1).+(1:6)] = I(6)
+    attiG_mtx[(13*1).+(7:10), (12*1).+(7:9)] = RS.lmult(qbt1)*RS.hmat()
+    attiG_mtx[(13*1).+(11:13), (12*1).+(10:12)] = I(3)
+
+    attiG_mtx[(26).+(1:6), (24).+(1:6)] = I(6)
+    attiG_mtx[(26).+(7:10), (24).+(7:9)] = RS.lmult(qat1)*RS.hmat()
+    attiG_mtx[(26).+(11:13), (24).+(10:12)] = I(3)
+    attiG_mtx[(26 + 13*1).+(1:6), (24 + 12*1).+(1:6)] = I(6)
+    attiG_mtx[(26 + 13*1).+(7:10), (24 + 12*1).+(7:9)] = RS.lmult(qbt1)*RS.hmat()
+    attiG_mtx[(26 + 13*1).+(11:13), (24 + 12*1).+(10:12)] = I(3)
+
+    attiG_mtx[(26 + 26).+(1:12), (24 + 24).+(1:12)] = I(12)
+    return attiG_mtx
+end
+
+# basic test of fdyn 
+fdyn(x1, x0, [0;0;0;0;0;0;0], [0;0;0;0;0], 0.05, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)
+
+# basic test of Dfyn*attiG 
+Dfmtx = Dfdyn(x1, x0, [0;0;0;0;0;0;0], [0;0;0;0;0], 0.05, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)
+attiG_mtx = attiG_f(x1,x0)
+# rigorous test, need to do systme simulation
+
 
 
 """ Define flotation force through controller """

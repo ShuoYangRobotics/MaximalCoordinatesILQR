@@ -21,3 +21,12 @@ cmat = [0 1 0;
 g2 = cmat * V*Lmat(qa)'*qb
 jacobian(g2,qa)
 jacobian(g2,qb)
+
+
+syms phi1 phi2 phi3 real
+
+phi = [phi1; phi2; phi3]
+
+q = 1/sqrt(1+norm(phi)^2)*[1;phi]
+
+simplify(jacobian(q,phi)*(phi1^2 + phi2^2 + phi3^2 + 1)^(3/2))
