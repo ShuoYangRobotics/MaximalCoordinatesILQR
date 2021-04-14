@@ -161,12 +161,12 @@ mech = Mechanism(origin, links, eqcs, ineqcs) # TODO: this function is mutating!
 
 """ test state """
 x0 = generate_config(mech, [2.0;2.0;1.0;pi/2], [pi/2]);
+u0 = [0]
 xd, vd, qd, ωd, Fτd = state_parts(mech, x0,u0)
 dr = pi/14
 x1 = generate_config(mech, [2.0;2.0;1.0;pi/2+dr], [pi/2+dr]);
 xdp, vdp, qdp, ωdp, Fτd = state_parts(mech, x1,u0)
 # x0 = generate_config(mech, [0.0;0.0;1.0;0.0], [0.0]);
-u0 = [0]
 reshape(x0,(13,2))'
 # visualize state 
 setStates!(mech,x0)
@@ -298,34 +298,37 @@ gval = g(x0,vertices)
 Dgmtx = Dg(x0,vertices)
 
 # this is called state_diff_jacobian in Altro
-q_a0 = SVector{4}(x0[13*0 .+ (7:10)])
-q_b0 = SVector{4}(x0[13*1 .+ (7:10)])
-sdJ0 = zeros(26,24)
-sdJ0[13*0 .+ (1:3), 12*0 .+ (1:3)] = I(3)
-sdJ0[13*0 .+ (4:6), 12*0 .+ (4:6)] = I(3)
-sdJ0[13*0 .+ (7:10), 12*0 .+ (7:9)] = RS.∇differential(UnitQuaternion(q_a0))
-sdJ0[13*0 .+ (11:13), 12*0 .+ (10:12)] = I(3)
-sdJ0[13*1 .+ (1:3), 12*1 .+ (1:3)] = I(3)
-sdJ0[13*1 .+ (4:6), 12*1 .+ (4:6)] = I(3)
-sdJ0[13*1 .+ (7:10), 12*1 .+ (7:9)] = RS.∇differential(UnitQuaternion(q_b0))
-sdJ0[13*1 .+ (11:13), 12*1 .+ (10:12)] = I(3)
+function state_diff_attiG(x)
+    q_a0 = SVector{4}(x[13*0 .+ (7:10)])
+    q_b0 = SVector{4}(x[13*1 .+ (7:10)])
+    sdJ0 = zeros(26,24)
+    sdJ0[13*0 .+ (1:3), 12*0 .+ (1:3)] = I(3)
+    sdJ0[13*0 .+ (4:6), 12*0 .+ (4:6)] = I(3)
+    sdJ0[13*0 .+ (7:10), 12*0 .+ (7:9)] = RS.∇differential(UnitQuaternion(q_a0))
+    sdJ0[13*0 .+ (11:13), 12*0 .+ (10:12)] = I(3)
+    sdJ0[13*1 .+ (1:3), 12*1 .+ (1:3)] = I(3)
+    sdJ0[13*1 .+ (4:6), 12*1 .+ (4:6)] = I(3)
+    sdJ0[13*1 .+ (7:10), 12*1 .+ (7:9)] = RS.∇differential(UnitQuaternion(q_b0))
+    sdJ0[13*1 .+ (11:13), 12*1 .+ (10:12)] = I(3)
+    return sdJ0
+end
 
-q_a1 = SVector{4}(x1[13*0 .+ (7:10)])
-q_b1 = SVector{4}(x1[13*1 .+ (7:10)])
-sdJ1 = zeros(26,24)
-sdJ1[13*0 .+ (1:3), 12*0 .+ (1:3)] = I(3)
-sdJ1[13*0 .+ (4:6), 12*0 .+ (4:6)] = I(3)
-sdJ1[13*0 .+ (7:10), 12*0 .+ (7:9)] = RS.∇differential(UnitQuaternion(q_a1))
-sdJ1[13*0 .+ (11:13), 12*0 .+ (10:12)] = I(3)
-sdJ1[13*1 .+ (1:3), 12*1 .+ (1:3)] = I(3)
-sdJ1[13*1 .+ (4:6), 12*1 .+ (4:6)] = I(3)
-sdJ1[13*1 .+ (7:10), 12*1 .+ (7:9)] = RS.∇differential(UnitQuaternion(q_b1))
-sdJ1[13*1 .+ (11:13), 12*1 .+ (10:12)] = I(3)
+# q_a1 = SVector{4}(x1[13*0 .+ (7:10)])
+# q_b1 = SVector{4}(x1[13*1 .+ (7:10)])
+# sdJ1 = zeros(26,24)
+# sdJ1[13*0 .+ (1:3), 12*0 .+ (1:3)] = I(3)
+# sdJ1[13*0 .+ (4:6), 12*0 .+ (4:6)] = I(3)
+# sdJ1[13*0 .+ (7:10), 12*0 .+ (7:9)] = RS.∇differential(UnitQuaternion(q_a1))
+# sdJ1[13*0 .+ (11:13), 12*0 .+ (10:12)] = I(3)
+# sdJ1[13*1 .+ (1:3), 12*1 .+ (1:3)] = I(3)
+# sdJ1[13*1 .+ (4:6), 12*1 .+ (4:6)] = I(3)
+# sdJ1[13*1 .+ (7:10), 12*1 .+ (7:9)] = RS.∇differential(UnitQuaternion(q_b1))
+# sdJ1[13*1 .+ (11:13), 12*1 .+ (10:12)] = I(3)
 
 # g(x1) = g(x0) + G(x0)*(x1-x0)
 # so G(x0)*(x1-x0) =  0
-Dgmtx*sdJ0*state_error   # this is not very close to 0
-Dgmtx*sdJ1*state_error   # this is not very close to 0
+Dgmtx*state_diff_attiG(x0)*state_error   # this is not very close to 0
+Dgmtx*state_diff_attiG(x1)*state_error   # this is not very close to 0
 
 #why this happens? further dig into rotation error
 xxx = RS.rotation_error(qdp[1],qd[1], RS.CayleyMap())
@@ -372,8 +375,8 @@ function fdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     Ma = diagm([ma,ma,ma])
     Mb = diagm([mb,mb,mb])
     # eqn 3 4 in my notes, notice gravity direction,    Gra's express
-    fdyn_vec[7:9] = Ma*(vat1-vat)+Ma*[0;0;9.81]*Δt - Ft*Δt - [-I;zeros(2,3)]'*λt*Δt   # Gra'λ
-    fdyn_vec[10:12] = Mb*(vbt1-vbt)+Mb*[0;0;9.81]*Δt - [I;zeros(2,3)]'*λt*Δt  # Grb'λ
+    fdyn_vec[7:9] = Ma*(vat1-vat)/Δt + Ma*[0;0;9.81] - Ft - [-I;zeros(2,3)]'*λt   # Gra'λ
+    fdyn_vec[10:12] = Mb*(vbt1-vbt)/Δt + Mb*[0;0;9.81] - [I;zeros(2,3)]'*λt # Grb'λ
 
     # eqn 5 6 , become harder
     fdyn_vec[13:16] = qat1 - Δt/2*RS.lmult(qat)*SVector{4}([sqrt(4/Δt^2 -wat'*wat);wat])
@@ -382,10 +385,10 @@ function fdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     # eqn 7 8
     Gqamtx = Gqa(qat,qbt,vertices) 
     Gqbmtx = Gqb(qat,qbt,vertices) 
-    fdyn_vec[21:23] = Ja * wat1 * sqrt(4/Δt^2 -wat1'*wat1) + wat1 × (Ja * wat1) 
-                    - Ja * wat  * sqrt(4/Δt^2 - wat'*wat) + wat  × (Ja * wat) - 2taut + 2*[0;0;tau_joint] - Gqamtx'*λt
-    fdyn_vec[24:26] = Jb * wbt1 * sqrt(4/Δt^2 -wbt1'*wbt1) + wbt1 × (Jb * wbt1) 
-                    - Jb * wbt  * sqrt(4/Δt^2 - wbt'*wbt) + wbt  × (Jb * wbt)         - 2*[0;0;tau_joint] - Gqbmtx'*λt
+    fdyn_vec[21:23] = Ja * wat1 * sqrt(4/Δt^2 -wat1'*wat1) + cross(wat1, (Ja * wat1)) 
+                    - Ja * wat  * sqrt(4/Δt^2 - wat'*wat) + cross(wat,(Ja * wat)) - 2*taut + 2*[0;0;tau_joint] - Gqamtx'*λt
+    fdyn_vec[24:26] = Jb * wbt1 * sqrt(4/Δt^2 -wbt1'*wbt1) + cross(wbt1, (Jb * wbt1))
+                    - Jb * wbt  * sqrt(4/Δt^2 - wbt'*wbt) + cross(wbt, (Jb * wbt))        - 2*[0;0;tau_joint] - Gqbmtx'*λt
     return fdyn_vec
 end
 
@@ -506,7 +509,7 @@ function Dfdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     row1 = [                    J31*w2 - J21*w3 - J11*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J31*w1 - J22*w3 + 2*J32*w2 + J33*w3 - J12*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J33*w2 - J22*w2 - 2*J23*w3 - J21*w1 - J13*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J11*w1 + J12*w2 + J13*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
     row2 = [J11*w3 - 2*J31*w1 - J32*w2 - J33*w3 - J21*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J12*w3 - J32*w1 - J22*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J11*w1 + J12*w2 + 2*J13*w3 - J33*w1 - J23*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J21*w1 + J22*w2 + J23*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
     row3 = [2*J21*w1 - J11*w2 + J22*w2 + J23*w3 - J31*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J22*w1 - 2*J12*w2 - J13*w3 - J11*w1 - J32*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J23*w1 - J13*w2 - J33*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
-    Dfmtx[24:26, (26 + 13*1).+(11:13)] =[row1 row2 row3]'
+    Dfmtx[24:26, (26 + 13*1).+(11:13)] = [row1 row2 row3]'
 
     Dfmtx[24:26, (26 + 26).+(7)] =  [0;0;-2]
     Dfmtx[24:26, (26 + 26 + 7).+(1:5)] = -Gqbmtx'
@@ -546,8 +549,99 @@ fdyn(x1, x0, [0;0;0;0;0;0;0], [0;0;0;0;0], 0.05, 1, 1, diagm([1,1,1]),diagm([1,1
 # basic test of Dfyn*attiG 
 Dfmtx = Dfdyn(x1, x0, [0;0;0;0;0;0;0], [0;0;0;0;0], 0.05, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)
 attiG_mtx = attiG_f(x1,x0)
-# rigorous test, need to do systme simulation
 
+# a knot is a vector contains [x;u;λ]
+function randKnot()
+    z = zeros(38)
+end
+
+    
+# x is the current state, x⁺ is the next state
+# given current state x and current U
+# use newton's method to solve for next state
+# u has dimension 7, λ has dimension 5
+# should write a struct to describe these variables 
+function discrete_dynamics(x, u, dt)
+    λ = randn(eltype(x),5)
+    x⁺ = Vector(x)
+    x⁺_new, λ_new = copy(x⁺), copy(λ)
+
+    max_iters, line_iters, ϵ = 100, 20, 1e-6
+    for i=1:max_iters  
+        # print("iter ", i, ": ")
+
+        # Newton step    
+        # 31 = 26 + 5
+        err_vec = [fdyn(x⁺, x, u, λ, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices);
+                   g(x⁺,vertices)]
+
+        err = norm(err_vec)
+        # println(" err_vec: ", err)
+        # jacobian of x+ and λ
+        G = Dg(x⁺,vertices)*state_diff_attiG(x⁺)
+        Fdyn = Dfdyn(x⁺, x, u, λ, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)*attiG_f(x⁺, x)
+        # 31 x 29  (24+5)
+        F = [Fdyn[:,1:24] Fdyn[:,48+1:48+5];G spzeros(5,5)]
+        Δs = -F\err_vec  #29x1
+       
+        # line search
+        j=0
+        err_new = err
+        while (err_new >= err) && (j < line_iters)
+            # println("*****")
+            Δλ = Δs[24 .+ (1:5)]
+            # println(Δs')
+            λ_new .= λ + Δλ
+
+            Δx⁺ = Δs[1:24]
+            # calculate x⁺_new = x⁺ + Δx⁺
+            x⁺_new[13*0 .+ (1:3)] = x⁺[13*0 .+ (1:3)] + Δx⁺[12*0 .+ (1:3)]
+            x⁺_new[13*0 .+ (4:6)] = x⁺[13*0 .+ (4:6)] + Δx⁺[12*0 .+ (4:6)]
+            phi = Δx⁺[12*0 .+ (7:9)]
+            x⁺_new[13*0 .+ (7:10)] = RS.lmult(SVector{4}(x⁺[13*0 .+ (7:10)]))*[1;phi]/(sqrt(1+norm(phi)^2))
+            x⁺_new[13*0 .+ (11:13)] = x⁺[13*0 .+ (11:13)] + Δx⁺[12*0 .+ (10:12)]
+
+            x⁺_new[13*1 .+ (1:3)] = x⁺[13*1 .+ (1:3)] + Δx⁺[12*1 .+ (1:3)]
+            x⁺_new[13*1 .+ (4:6)] = x⁺[13*1 .+ (4:6)] + Δx⁺[12*1 .+ (4:6)]
+            phi = Δx⁺[12*1 .+ (7:9)]
+            x⁺_new[13*1 .+ (7:10)] = RS.lmult(SVector{4}(x⁺[13*1 .+ (7:10)]))*[1;phi]/(sqrt(1+norm(phi)^2))
+            x⁺_new[13*1 .+ (11:13)] = x⁺[13*1 .+ (11:13)] + Δx⁺[12*1 .+ (10:12)]
+
+
+            # ωa⁺ = x⁺_new[13*0 .+ (11:13)]
+            # ωb⁺ = x⁺_new[13*1 .+ (11:13)]
+            # ωs⁺ = [ωa⁺;ωb⁺]
+            
+            # if all(1/dt^2 .>= dot(ωs⁺,ωs⁺))
+            err_vec = [fdyn(x⁺_new, x, u, λ_new, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices);
+                        g(x⁺_new,vertices)]
+            err_new = norm(err_vec)
+            # println(" err_new_line_search: ", err_new)
+            # end
+            Δs /= 2
+            j += 1
+        end
+        # println(" steps: ", j)
+        # println(" err_new: ", err_new)
+        x⁺ .= x⁺_new
+        λ .= λ_new
+
+        # convergence check
+        if err_new < ϵ
+            return x⁺, λ
+        end
+    end 
+    return x⁺, λ   
+end
+
+
+# rigorous test, need to do systme simulation 
+# start from x0, simulate forward 
+U = [1.0; 0.0; 0.0;
+     0.0; 0.0; 0.0;
+     0.6]
+x1, λ1 = discrete_dynamics(x0, U, 0.01)
+x2, λ2 = discrete_dynamics(x1, U, 0.01)
 
 
 """ Define flotation force through controller """
