@@ -258,9 +258,9 @@ constraint2 = CD.g(mech, geteqconstraint(mech, eqcids[2]))
 # get the rotation error 
 
 
-x0 = generate_config(mech, [2.0;2.0;1.0;pi/2], [pi/2]);
+x0 = generate_config_with_rand_vel(mech, [2.0;2.0;1.0;pi/2], [pi/2]);
 dr = pi/140
-x1 = generate_config(mech, [2.0;2.0;1.0;pi/2+dr], [pi/2+dr]);
+x1 = generate_config_with_rand_vel(mech, [2.0;2.0;1.0;pi/2+dr], [pi/2+dr]);
 xd, vd, qd, ωd, Fτd = state_parts(mech, x0,u0)
 xdp, vdp, qdp, ωdp, Fτd = state_parts(mech, x1,u0)
 
@@ -437,8 +437,10 @@ function fdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     Ma = diagm([ma,ma,ma])
     Mb = diagm([mb,mb,mb])
     # eqn 3 4 in my notes, notice gravity direction,    Gra's express
-    fdyn_vec[7:9] = Ma*(vat1-vat) + Ma*[0;0;g]*Δt - Ft*Δt - [-I(3);zeros(2,3)]'*λt*Δt   # Gra'λ
-    fdyn_vec[10:12] = Mb*(vbt1-vbt) + Mb*[0;0;g]*Δt - [I(3);zeros(2,3)]'*λt*Δt # Grb'λ
+    aa = Ma*(vat1-vat)/Δt + Ma*[0;0;g]
+    fdyn_vec[7:9] =  aa - Ft - [-I(3);zeros(2,3)]'*λt   # Gra'λ
+    bb = Mb*(vbt1-vbt)/Δt + Mb*[0;0;g]
+    fdyn_vec[10:12] = bb - [I(3);zeros(2,3)]'*λt # Grb'λ
     
     # println(wat'*wat)
     # println(xt[13*1 .+ (11:13)])
@@ -450,8 +452,8 @@ function fdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     # eqn 7 8
     # println(λt)
     # println(tau_joint)
-    Gqamtx = Gqa(qat,qbt,vertices) 
-    Gqbmtx = Gqb(qat,qbt,vertices) 
+    Gqamtx = Gqa(qat1,qbt1,vertices) 
+    Gqbmtx = Gqb(qat1,qbt1,vertices) 
     a = Ja * wat1 * sqrt(4/Δt^2 -wat1'*wat1) + cross(wat1, (Ja * wat1)) - Ja * wat  * sqrt(4/Δt^2 - wat'*wat) + cross(wat,(Ja * wat))
     k = - 2*taut + 2*[0;0;tau_joint] - Gqamtx'*λt
     # println(a)
@@ -481,8 +483,8 @@ function Dfdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
 
     Ma = diagm([ma,ma,ma])
     Mb = diagm([mb,mb,mb])
-    Gqamtx = Gqa(qat,qbt,vertices) 
-    Gqbmtx = Gqb(qat,qbt,vertices) 
+    Gqamtx = Gqa(qat1,qbt1,vertices) 
+    Gqbmtx = Gqb(qat1,qbt1,vertices) 
     dt = Δt
     # derivative of eqn 1
     Dfmtx[1:3, (13*0).+(1:3)] = I(3)                           # 3x3 
@@ -493,14 +495,14 @@ function Dfdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     Dfmtx[4:6, (26 + 13*1).+(1:3)] = -I(3)                     # 3x3
     Dfmtx[4:6, (26 + 13*1).+(4:6)] = -I(3)*Δt                  # 3x3
     # derivative of eqn 3 
-    Dfmtx[7:9, (13*0).+(4:6)] = Ma                             # 3x3
-    Dfmtx[7:9, (26 + 13*0).+(4:6)] = -Ma                       # 3x3
-    Dfmtx[7:9, (26 + 26).+(1:3)] = -I(3)*Δt                    # 3x3
-    Dfmtx[7:9, (26 + 26 + 7).+(1:5)] = - [-I;zeros(2,3)]'*Δt   # 3x3
+    Dfmtx[7:9, (13*0).+(4:6)] = Ma/Δt                             # 3x3
+    Dfmtx[7:9, (26 + 13*0).+(4:6)] = -Ma/Δt                       # 3x3
+    Dfmtx[7:9, (26 + 26).+(1:3)] = -I(3)                    # 3x3
+    Dfmtx[7:9, (26 + 26 + 7).+(1:5)] = - [-I;zeros(2,3)]'   # 3x3
     # derivative of eqn 4 
-    Dfmtx[10:12, (13*1).+(4:6)] = Mb                           # 3x3
-    Dfmtx[10:12, (26 + 13*1).+(4:6)] = -Mb                     # 3x3
-    Dfmtx[10:12, (26 + 26 + 7).+(1:5)] = - [I;zeros(2,3)]'*Δt  # 3x3
+    Dfmtx[10:12, (13*1).+(4:6)] = Mb/Δt                           # 3x3
+    Dfmtx[10:12, (26 + 13*1).+(4:6)] = -Mb/Δt                     # 3x3
+    Dfmtx[10:12, (26 + 26 + 7).+(1:5)] = - [I;zeros(2,3)]'  # 3x3
     # derivative of eqn 5   
     Dfmtx[13:16, (13*0).+(7:10)] = I(4)                        # 4x4
     Dfmtx[13:16, (26 + 13*0).+(7:10)] = -Δt/2*RS.rmult(SVector{4}([sqrt(4/Δt^2 -wat'*wat);wat]))   # 4x4
@@ -521,9 +523,9 @@ function Dfdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     Dfmtx[21:23, (13*0).+(11:13)] = [row1 row2 row3]'
 
 
-    # d G_qat'*λt /dqat  3x4. copy matlab code, then replace matlab symbol with Julia variables
+    # d G_qa1t'*λt /dqa1t  3x4. copy matlab code, then replace matlab symbol with Julia variables
     la1 = λt[1];la2 = λt[2];la3 = λt[3];la4 = λt[4];la5 = λt[5];
-    aw = qat[1]; av1 = qat[2]; av2 = qat[3]; av3 = qat[4];
+    aw = qat1[1]; av1 = qat1[2]; av2 = qat1[3]; av3 = qat1[4];
     pa1 = vertices[1][1]; pa2 = vertices[1][2]; pa3 = vertices[1][3]
     row1 = [  la2*(2*av1*pa2 + 2*av2*pa1 + 2*aw*pa3) - la1*(2*av2*pa2 - 2*av1*pa1 + 2*av3*pa3) + la3*(2*av1*pa3 + 2*av3*pa1 - 2*aw*pa2),    
        la3*(2*av1*pa2 + 2*av2*pa1 + 2*aw*pa3) - la2*(2*av1*pa3 + 2*av3*pa1 - 2*aw*pa2) - la1*(2*av3*pa2 - 2*av2*pa3 + 2*aw*pa1),   
@@ -537,7 +539,7 @@ function Dfdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
        la2*(2*av1*pa1 + 2*av2*pa2 - 2*av3*pa3) - la1*(2*av2*pa1 - 2*av1*pa2 + 2*aw*pa3) + la3*(2*av2*pa3 + 2*av3*pa2 - 2*aw*pa1), 
      - la1*(2*av1*pa1 + 2*av2*pa2 - 2*av3*pa3) - la2*(2*av2*pa1 - 2*av1*pa2 + 2*aw*pa3) - la3*(2*av1*pa3 + 2*av3*pa1 + 2*aw*pa2),    
        la2*(2*av1*pa3 + 2*av3*pa1 + 2*aw*pa2) - la1*(2*av2*pa3 + 2*av3*pa2 - 2*aw*pa1) - la3*(2*av2*pa1 - 2*av1*pa2 + 2*aw*pa3)]
-    Dfmtx[21:23, (26 + 13*0).+(7:10)] = -[row1 row2 row3]'  # in the eqn 7 we have -G_qat'*λt
+    Dfmtx[21:23, (13*0).+(7:10)] = -[row1 row2 row3]'  # in the eqn 7 we have -G_qa1t'*λt
 
     # d (- Ja * wat  * sqrt(4/Δt^2 - wat'*wat) + wat  × (Ja * wat)) / dwat
     w1 = wat[1]; w2 = wat[2]; w3 = wat[3];
@@ -546,11 +548,11 @@ function Dfdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     row3 = [2*J21*w1 - J11*w2 + J22*w2 + J23*w3 - J31*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w1*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J22*w1 - 2*J12*w2 - J13*w3 - J11*w1 - J32*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w2*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J23*w1 - J13*w2 - J33*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) + (w3*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
     Dfmtx[21:23, (26 + 13*0).+(11:13)] = [row1 row2 row3]'
 
-    # d G_qat'*λt /dqbt  3x4.
+    # d G_qa1t'*λt /dqb1t  3x4.
     row1 = [- av3*la4 - aw*la5,   av2*la4 - av1*la5, - av1*la4 - av2*la5,   aw*la4 - av3*la5]
     row2 = [  av3*la5 - aw*la4, - av1*la4 - av2*la5,   av1*la5 - av2*la4, - av3*la4 - aw*la5]
     row3 = [ av1*la4 - av2*la5,  - av3*la5 - aw*la4,    aw*la5 - av3*la4,  av1*la5 + av2*la4]
-    Dfmtx[21:23, (26 + 13*1).+(7:10)] =  -[row1 row2 row3]'  # in the eqn 7 we have -G_qat'*λt
+    Dfmtx[21:23, (13*1).+(7:10)] =  -[row1 row2 row3]'  # in the eqn 7 we have -G_qa1t'*λt
 
     Dfmtx[21:23, (26 + 26).+(4:6)] =  -2*I(3)
     Dfmtx[21:23, (26 + 26).+(7)] =  [0;0;2]
@@ -566,18 +568,18 @@ function Dfdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     row3 = [2*J21*w1 - J11*w2 + J22*w2 + J23*w3 + J31*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w1*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2), J22*w1 - 2*J12*w2 - J13*w3 - J11*w1 + J32*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w2*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2),                     J23*w1 - J13*w2 + J33*(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2) - (w3*(J31*w1 + J32*w2 + J33*w3))/(4/dt^2 - w1^2 - w2^2 - w3^2)^(1/2)]
     Dfmtx[24:26, (13*1).+(11:13)] = [row1 row2 row3]'
 
-    # d G_qbt'*λt /dqat  3x4.
-    bw = qbt[1]; bv1 = qbt[2]; bv2 = qbt[3]; bv3 = qbt[4];
+    # d G_qb1t'*λt /dqa1t  3x4.
+    bw = qbt1[1]; bv1 = qbt1[2]; bv2 = qbt1[3]; bv3 = qbt1[4];
     pb1 = vertices[2][1]; pb2 = vertices[2][2]; pb3 = vertices[2][3]
     row1 = [ bv3*la4 + bw*la5, bv1*la5 - bv2*la4, bv1*la4 + bv2*la5,    bv3*la5 - bw*la4]
     row2 = [ bw*la4 - bv3*la5, bv1*la4 + bv2*la5, bv2*la4 - bv1*la5,    bv3*la4 + bw*la5]
     row3 = [bv2*la5 - bv1*la4,  bv3*la5 + bw*la4,  bv3*la4 - bw*la5, - bv1*la5 - bv2*la4]
-    Dfmtx[24:26, (26 + 13*0).+(7:10)] =  -[row1 row2 row3]'  # in the eqn 8 we have -G_qbt'*λt
-    # d G_qbt'*λt /dqbt  3x4.
+    Dfmtx[24:26, (13*0).+(7:10)] =  -[row1 row2 row3]'  # in the eqn 8 we have -G_qb1t'*λt
+    # d G_qb1t'*λt /dqb1t  3x4.
     row1 = [la1*(2*bv2*pb2 - 2*bv1*pb1 + 2*bv3*pb3) - la2*(2*bv1*pb2 + 2*bv2*pb1 + 2*bw*pb3) - la3*(2*bv1*pb3 + 2*bv3*pb1 - 2*bw*pb2),  la1*(2*bv3*pb2 - 2*bv2*pb3 + 2*bw*pb1) + la2*(2*bv1*pb3 + 2*bv3*pb1 - 2*bw*pb2) - la3*(2*bv1*pb2 + 2*bv2*pb1 + 2*bw*pb3), la2*(2*bv3*pb2 - 2*bv2*pb3 + 2*bw*pb1) - la1*(2*bv1*pb3 + 2*bv3*pb1 - 2*bw*pb2) - la3*(2*bv2*pb2 - 2*bv1*pb1 + 2*bv3*pb3), la2*(2*bv2*pb2 - 2*bv1*pb1 + 2*bv3*pb3) + la1*(2*bv1*pb2 + 2*bv2*pb1 + 2*bw*pb3) + la3*(2*bv3*pb2 - 2*bv2*pb3 + 2*bw*pb1)]
     row2 = [la2*(2*bv1*pb1 - 2*bv2*pb2 + 2*bv3*pb3) - la1*(2*bv1*pb2 + 2*bv2*pb1 - 2*bw*pb3) - la3*(2*bv2*pb3 + 2*bv3*pb2 + 2*bw*pb1), la3*(2*bv1*pb1 - 2*bv2*pb2 + 2*bv3*pb3) + la1*(2*bv1*pb3 - 2*bv3*pb1 + 2*bw*pb2) + la2*(2*bv2*pb3 + 2*bv3*pb2 + 2*bw*pb1),  la2*(2*bv1*pb3 - 2*bv3*pb1 + 2*bw*pb2) - la1*(2*bv2*pb3 + 2*bv3*pb2 + 2*bw*pb1) + la3*(2*bv1*pb2 + 2*bv2*pb1 - 2*bw*pb3), la3*(2*bv1*pb3 - 2*bv3*pb1 + 2*bw*pb2) - la2*(2*bv1*pb2 + 2*bv2*pb1 - 2*bw*pb3) - la1*(2*bv1*pb1 - 2*bv2*pb2 + 2*bv3*pb3)]
     row3 = [la3*(2*bv1*pb1 + 2*bv2*pb2 - 2*bv3*pb3) - la1*(2*bv1*pb3 + 2*bv3*pb1 + 2*bw*pb2) - la2*(2*bv2*pb3 + 2*bv3*pb2 - 2*bw*pb1), la1*(2*bv2*pb1 - 2*bv1*pb2 + 2*bw*pb3) - la2*(2*bv1*pb1 + 2*bv2*pb2 - 2*bv3*pb3) - la3*(2*bv2*pb3 + 2*bv3*pb2 - 2*bw*pb1), la1*(2*bv1*pb1 + 2*bv2*pb2 - 2*bv3*pb3) + la2*(2*bv2*pb1 - 2*bv1*pb2 + 2*bw*pb3) + la3*(2*bv1*pb3 + 2*bv3*pb1 + 2*bw*pb2),  la1*(2*bv2*pb3 + 2*bv3*pb2 - 2*bw*pb1) - la2*(2*bv1*pb3 + 2*bv3*pb1 + 2*bw*pb2) + la3*(2*bv2*pb1 - 2*bv1*pb2 + 2*bw*pb3)]
-    Dfmtx[24:26, (26 + 13*1).+(7:10)] =  -[row1 row2 row3]'  # in the eqn 8 we have -G_qbt'*λt
+    Dfmtx[24:26, (13*1).+(7:10)] =  -[row1 row2 row3]'  # in the eqn 8 we have -G_qb1t'*λt
 
     # d (- Jb * wbt  * sqrt(4/Δt^2 - wbt'*wbt) + wbt  × (Jb * wbt)) / dwbt
     w1 = wbt[1]; w2 = wbt[2]; w3 = wbt[3];
@@ -637,7 +639,7 @@ begin
     f2 = fdyn(x1+dxv, x0+dxv, u+du, λ+dλ, 0.1, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)
     
     # basic test of Dfyn*attiG 
-# basic test of Dfyn*attiG 
+    # basic test of Dfyn*attiG 
     # basic test of Dfyn*attiG 
     Dfmtx = Dfdyn(x1, x0, u, λ, 0.1, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)
     attiG_mtx = attiG_f(x1,x0)
@@ -664,26 +666,20 @@ begin
 end
 
 
-
-# a knot is a vector contains [x;u;λ]
-function randKnot()
-    z = zeros(38)
-end
-
-    
 # x is the current state, x⁺ is the next state
 # given current state x and current U
 # use newton's method to solve for the vel part of x and the next state x⁺
 # u has dimension 7, λ has dimension 5
 # should write a struct to describe these variables 
 # this function modifies x!
-function discrete_dynamics!(x, u, dt)
-    λ = randn(eltype(x),5)
+function discrete_dynamics!(x, u, λ_init, dt)
+    λ = zeros(eltype(x),5)
+    # λ = λ_init
     x⁺ = Vector(x)
     x_iter = copy(x)
     x⁺_new, x_new, λ_new = copy(x⁺), copy(x), copy(λ)
 
-    max_iters, line_iters, ϵ = 100, 200, 1e-6
+    max_iters, line_iters, ϵ = 100, 50, 1e-6
     for i=1:max_iters  
         # print("iter ", i, ": ")
 
@@ -703,9 +699,9 @@ function discrete_dynamics!(x, u, dt)
 
 
 
-        # 31 x 29  (24+12+5) # x⁺,  x vel part , lambda
-        F = [Fdyn[:,1:24] Fdyn[:,(24+12*0).+(4:6)] Fdyn[:,(24+12*0).+(10:12)] Fdyn[:,(24+12*1).+(4:6)] Fdyn[:,(24+12*1).+(10:12)] Fdyn[:,48+7+1:48+7+5];
-                       G  spzeros(5,12)  spzeros(5,5)]
+        # 31 x 29  (24+5) # x⁺ , lambda
+        F = [Fdyn[:,1:24] Fdyn[:,48+7+1:48+7+5];
+                       G   spzeros(5,5)]
         Δs = -F\err_vec  #29x1
        
         # line search
@@ -713,11 +709,11 @@ function discrete_dynamics!(x, u, dt)
         err_new = err + 1
         while (err_new > err) && (j < line_iters)
             # println("*****")
-            Δλ = Δs[(24+12) .+ (1:5)]
+            Δλ = Δs[(24) .+ (1:5)]
             # println(Δs')
             λ_new .= λ + Δλ
 
-            Δx⁺ = Δs[1:24]
+            Δx⁺ = Δs[1:24] # order according to fdyn: 
             # calculate x⁺_new = x⁺ + Δx⁺
             x⁺_new[13*0 .+ (1:3)] = x⁺[13*0 .+ (1:3)] + Δx⁺[12*0 .+ (1:3)]
             x⁺_new[13*0 .+ (4:6)] = x⁺[13*0 .+ (4:6)] + Δx⁺[12*0 .+ (4:6)]
@@ -731,32 +727,33 @@ function discrete_dynamics!(x, u, dt)
             x⁺_new[13*1 .+ (7:10)] = RS.lmult(SVector{4}(x⁺[13*1 .+ (7:10)]))*[1;phi]/(sqrt(1+norm(phi)^2))
             x⁺_new[13*1 .+ (11:13)] = x⁺[13*1 .+ (11:13)] + Δx⁺[12*1 .+ (10:12)]
 
-            # update the velocity part of x 
-            Δx = Δs[(24) .+ (1:12)]   # only velocity part
-            x_new[13*0 .+ (4:6)] = x_iter[13*0 .+ (4:6)] + Δx[1:3] # qa linear vel
-            x_new[13*0 .+ (11:13)] = x_iter[13*0 .+ (11:13)] + Δx[4:6] # qa angular vel
-            x_new[13*1 .+ (4:6)] = x_iter[13*1 .+ (4:6)] + Δx[7:9] # qb linear vel
-            x_new[13*1 .+ (11:13)] = x_iter[13*1 .+ (11:13)] + Δx[10:12] # qb angular vel
+            # # update the velocity part of x 
+            # Δx = Δs[(24) .+ (1:12)]   # only velocity part
+            # x_new[13*0 .+ (4:6)] = x_iter[13*0 .+ (4:6)] + Δx[1:3] # qa linear vel
+            # x_new[13*0 .+ (11:13)] = x_iter[13*0 .+ (11:13)] + Δx[4:6] # qa angular vel
+            # x_new[13*1 .+ (4:6)] = x_iter[13*1 .+ (4:6)] + Δx[7:9] # qb linear vel
+            # x_new[13*1 .+ (11:13)] = x_iter[13*1 .+ (11:13)] + Δx[10:12] # qb angular vel
 
             ωa⁺ = x⁺_new[13*0 .+ (11:13)]
             ωb⁺ = x⁺_new[13*1 .+ (11:13)]
-            ωa = x_new[13*0 .+ (11:13)]
-            ωb = x_new[13*1 .+ (11:13)]
-            ωs⁺ = [ωa⁺;ωb⁺;ωa;ωb]
+            # ωa = x_new[13*0 .+ (11:13)]
+            # ωb = x_new[13*1 .+ (11:13)]
+            # ωs⁺ = [ωa⁺;ωb⁺;ωa;ωb]
             
-            if (4/dt^2 >= dot(ωa⁺,ωa⁺)) && (4/dt^2 >= dot(ωb⁺,ωb⁺)) && (4/dt^2 >= dot(ωa,ωa)) && (4/dt^2 >= dot(ωb,ωb))
-                err_vec = [fdyn(x⁺_new, x_new, u, λ_new, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices);
+            if (4/dt^2 >= dot(ωa⁺,ωa⁺)) && (4/dt^2 >= dot(ωb⁺,ωb⁺)) 
+                err_vec = [fdyn(x⁺_new, x_iter, u, λ_new, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices);
                             g(x⁺_new,vertices)]
                 err_new = norm(err_vec)
-                # println(" err_new_line_search: ", err_new)
+                # println(" fdyn: ", norm(fdyn(x⁺_new, x_iter, u, λ_new, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)))
+                # println(" g(x⁺_new,vertices): ", g(x⁺_new,vertices))
             end
             Δs /= 2
             j += 1
         end
         # println(" steps: ", j)
-        # println(" err_new: ", err_new)
+        println(" err_new: ", err_new)
         x⁺ .= x⁺_new
-        x_iter .= x_new
+        # x_iter .= x_new
         λ .= λ_new
 
         # convergence check
@@ -772,28 +769,31 @@ end
 
 # rigorous test, need to do systme simulation 
 # start from x0, simulate forward 
-U = [1.0; 0.0; 0.0;
+U = [0.0; 0.0; 0.0;
      0.0; 0.0; 0.0;
-     5.6]
+     10.0]
+λ_init = zeros(5)
 x0 = generate_config(mech, [2.0;2.0;1.0;pi/2], [pi/2]);
-x1, λ1 = discrete_dynamics!(x0, U, 0.01)
-x2, λ2 = discrete_dynamics!(x1, U, 0.01)
-fdyn(x2, x1, U, λ2, 0.01, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)
+x1, λ1 = discrete_dynamics!(x0, U, λ_init, 0.01)
+x2, λ2 = discrete_dynamics!(x1, U, λ1, 0.01)
+round.(fdyn(x2, x1, U, λ2, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices),digits=6)'
+
 
 # simulate for 3 seconds, 
 # then visualize it using Jan's code
-Tf =0.4
+Tf =1.5
 dt = 0.01
 N = Int(Tf/dt)
 
 x0 = generate_config(mech, [2.0;2.0;1.0;0], [0]);
 x = x0
-λ = zeros(5)
+λ = 0.05*randn(5)
 steps = Base.OneTo(Int(N))
 storage = CD.Storage{Float64}(steps,length(mech.bodies))
 for idx = 1:N
     println("step: ",idx)
-    x1, λ1 = discrete_dynamics!(x, U, dt)
+    x1, λ1 = discrete_dynamics!(x, U,λ, dt)
+    println(norm(fdyn(x1, x, U, λ1, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)))
     setStates!(mech,x1)
     for i=1:2
         storage.x[i][idx] = mech.bodies[i].state.xc
@@ -802,6 +802,7 @@ for idx = 1:N
         storage.ω[i][idx] = mech.bodies[i].state.ωc
     end
     x = x1
+    λ = λ1
 end
 visualize(mech,storage, env = "editor")
 
