@@ -158,7 +158,7 @@ q1 = UnitQuaternion(RotZ(ϕ1))
 # Define base link
 origin = Origin{Float64}()
 link0 = Box(width, depth, length1, 1., color = RGBA(1., 1., 0.))
-link0.m = 10 # set base mass
+link0.m = 10.0 # set base mass
 
 # Constraints on base
 # TODO: find what "Friction()" is doing
@@ -172,7 +172,10 @@ arm_depth = 0.1
 
 # Define arm link
 link1 = Box(arm_width, arm_depth, arm_length, arm_length, color = RGBA(0., 1., 0.))
-link1.m = 1
+link1.m = 1.0
+Inerita_a = diagm([1/12*link0.m*(width^2+depth^2),1/12*link0.m*(width^2+depth^2),1/12*link0.m*(width^2+depth^2)])
+Inerita_b = diagm([1/12*link1.m*(arm_length^2+arm_depth^2),1/12*link1.m*(arm_width^2+arm_depth^2),1/12*link1.m*(arm_width^2+arm_depth^2)])
+
 
 # Constraints on the arms
 joint1_axis = [0;0;1] # joint 1 rotates about z axis
@@ -455,7 +458,7 @@ function fdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     Gqamtx = Gqa(qat1,qbt1,vertices) 
     Gqbmtx = Gqb(qat1,qbt1,vertices) 
     a = Ja * wat1 * sqrt(4/Δt^2 -wat1'*wat1) + cross(wat1, (Ja * wat1)) - Ja * wat  * sqrt(4/Δt^2 - wat'*wat) + cross(wat,(Ja * wat))
-    k = - 2*taut + 2*[0;0;tau_joint] - Gqamtx'*λt
+    k = - 2*taut  - Gqamtx'*λt
     # println(a)
 
     # println(k)
@@ -465,6 +468,7 @@ function fdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     b = Jb * wbt1 * sqrt(4/Δt^2 -wbt1'*wbt1) + cross(wbt1, (Jb * wbt1)) - Jb * wbt  * sqrt(4/Δt^2 - wbt'*wbt) + cross(wbt, (Jb * wbt))
     kp = - 2*[0;0;tau_joint] - Gqbmtx'*λt
     fdyn_vec[24:26] = b+kp
+
                     
     return fdyn_vec
 end
@@ -555,7 +559,7 @@ function Dfdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     Dfmtx[21:23, (13*1).+(7:10)] =  -[row1 row2 row3]'  # in the eqn 7 we have -G_qa1t'*λt
 
     Dfmtx[21:23, (26 + 26).+(4:6)] =  -2*I(3)
-    Dfmtx[21:23, (26 + 26).+(7)] =  [0;0;2]
+    # Dfmtx[21:23, (26 + 26).+(7)] =  [0;0;2]
     Dfmtx[21:23, (26 + 26 + 7).+(1:5)] = -Gqamtx' 
     # derivative of eqn 8 (very challenging)
     # d (Jb * wbt1 * sqrt(4/Δt^2 -wbt1'*wbt1) + wbt1 × (Jb * wbt1)) / d wbt1
@@ -635,13 +639,13 @@ begin
     dxv[(13*0).+(11:13)] = randn(3)
     dxv[(13*1).+(4:6)] = randn(3)
     dxv[(13*1).+(11:13)] = randn(3)
-    f1 = fdyn(x1, x0, u, λ, 0.1, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)
-    f2 = fdyn(x1+dxv, x0+dxv, u+du, λ+dλ, 0.1, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)
+    f1 = fdyn(x1, x0, u, λ, 0.1, link0.m, link1.m, Inerita_a,Inerita_a,vertices)
+    f2 = fdyn(x1+dxv, x0+dxv, u+du, λ+dλ, 0.1, link0.m, link1.m, Inerita_a,Inerita_a,vertices)
     
     # basic test of Dfyn*attiG 
     # basic test of Dfyn*attiG 
     # basic test of Dfyn*attiG 
-    Dfmtx = Dfdyn(x1, x0, u, λ, 0.1, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)
+    Dfmtx = Dfdyn(x1, x0, u, λ, 0.1, link0.m, link1.m, Inerita_a,Inerita_a,vertices)
     attiG_mtx = attiG_f(x1,x0)
     
     state_diff = zeros(60)
@@ -659,7 +663,7 @@ begin
     f2 - (f1 + Dfmtx*attiG_mtx*state_diff)   
 
     # compare with Forward diff
-    faug(z) = fdyn(z[1:26], z[27:52], z[53:59], z[60:64], 0.1, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)
+    faug(z) = fdyn(z[1:26], z[27:52], z[53:59], z[60:64], 0.1, link0.m, link1.m, Inerita_a,Inerita_a,vertices)
     Df2 = ForwardDiff.jacobian(faug,[x1;x0;u;λ])
 
     f2 - (f1 + Df2*attiG_mtx*state_diff)
@@ -679,23 +683,23 @@ function discrete_dynamics!(x, u, λ_init, dt)
     x_iter = copy(x)
     x⁺_new, x_new, λ_new = copy(x⁺), copy(x), copy(λ)
 
-    max_iters, line_iters, ϵ = 100, 50, 1e-6
+    max_iters, line_iters, ϵ = 500, 100, 1e-6
     for i=1:max_iters  
         # print("iter ", i, ": ")
 
         # Newton step    
         # 31 = 26 + 5
-        err_vec = [fdyn(x⁺, x_iter, u, λ, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices);
+        err_vec = [fdyn(x⁺, x_iter, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices);
                    g(x⁺,vertices)]
 
         err = norm(err_vec)
         # println(" err_vec: ", err)
         # jacobian of x+ and λ
         G = Dg(x⁺,vertices)*state_diff_attiG(x⁺)
-        # faug(z) = fdyn(z[1:26], z[27:52], z[53:59], z[60:64], dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)
+        # faug(z) = fdyn(z[1:26], z[27:52], z[53:59], z[60:64], dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices)
         # Df2 = ForwardDiff.jacobian(faug,[x⁺;x_iter;u;λ])
         # Fdyn = Df2*attiG_f(x⁺, x_iter)
-        Fdyn = Dfdyn(x⁺, x_iter, u, λ, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)*attiG_f(x⁺, x_iter)
+        Fdyn = Dfdyn(x⁺, x_iter, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices)*attiG_f(x⁺, x_iter)
 
 
 
@@ -741,7 +745,7 @@ function discrete_dynamics!(x, u, λ_init, dt)
             # ωs⁺ = [ωa⁺;ωb⁺;ωa;ωb]
             
             if (4/dt^2 >= dot(ωa⁺,ωa⁺)) && (4/dt^2 >= dot(ωb⁺,ωb⁺)) 
-                err_vec = [fdyn(x⁺_new, x_iter, u, λ_new, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices);
+                err_vec = [fdyn(x⁺_new, x_iter, u, λ_new, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices);
                             g(x⁺_new,vertices)]
                 err_new = norm(err_vec)
                 # println(" fdyn: ", norm(fdyn(x⁺_new, x_iter, u, λ_new, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)))
@@ -751,7 +755,7 @@ function discrete_dynamics!(x, u, λ_init, dt)
             j += 1
         end
         # println(" steps: ", j)
-        println(" err_new: ", err_new)
+        # println(" err_new: ", err_new)
         x⁺ .= x⁺_new
         # x_iter .= x_new
         λ .= λ_new
@@ -769,20 +773,20 @@ end
 
 # rigorous test, need to do systme simulation 
 # start from x0, simulate forward 
-U = [0.0; 0.0; 0.0;
-     0.0; 0.0; 0.0;
-     10.0]
+U = [10.0; 0.0; 0.0;
+     0.0; 10.0; 0.0;
+     10]
 λ_init = zeros(5)
 x0 = generate_config(mech, [2.0;2.0;1.0;pi/2], [pi/2]);
 x1, λ1 = discrete_dynamics!(x0, U, λ_init, 0.01)
 x2, λ2 = discrete_dynamics!(x1, U, λ1, 0.01)
-round.(fdyn(x2, x1, U, λ2, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices),digits=6)'
+round.(fdyn(x2, x1, U, λ2, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices),digits=6)'
 
 
 # simulate for 3 seconds, 
 # then visualize it using Jan's code
-Tf =1.5
-dt = 0.01
+Tf =0.5
+dt = 0.005
 N = Int(Tf/dt)
 
 x0 = generate_config(mech, [2.0;2.0;1.0;0], [0]);
@@ -793,7 +797,7 @@ storage = CD.Storage{Float64}(steps,length(mech.bodies))
 for idx = 1:N
     println("step: ",idx)
     x1, λ1 = discrete_dynamics!(x, U,λ, dt)
-    println(norm(fdyn(x1, x, U, λ1, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)))
+    println(norm(fdyn(x1, x, U, λ1, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices)))
     setStates!(mech,x1)
     for i=1:2
         storage.x[i][idx] = mech.bodies[i].state.xc
