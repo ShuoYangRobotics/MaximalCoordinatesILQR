@@ -457,6 +457,9 @@ function fdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     # println(tau_joint)
     Gqamtx = Gqa(qat1,qbt1,vertices) 
     Gqbmtx = Gqb(qat1,qbt1,vertices) 
+    # println(4/Δt^2)
+    # println(wat1'*wat1)
+    # println(wat1)
     a = Ja * wat1 * sqrt(4/Δt^2 -wat1'*wat1) + cross(wat1, (Ja * wat1)) - Ja * wat  * sqrt(4/Δt^2 - wat'*wat) + cross(wat,(Ja * wat))
     k = - 2*taut  - Gqamtx'*λt
     # println(a)
@@ -683,7 +686,7 @@ function discrete_dynamics!(x, u, λ_init, dt)
     x_iter = copy(x)
     x⁺_new, x_new, λ_new = copy(x⁺), copy(x), copy(λ)
 
-    max_iters, line_iters, ϵ = 500, 100, 1e-6
+    max_iters, line_iters, ϵ = 500, 80, 1e-3
     for i=1:max_iters  
         # print("iter ", i, ": ")
 
@@ -708,16 +711,20 @@ function discrete_dynamics!(x, u, λ_init, dt)
                        G   spzeros(5,5)]
         Δs = -F\err_vec  #29x1
        
-        # line search
+        # backtracking line search
         j=0
-        err_new = err + 1
-        while (err_new > err) && (j < line_iters)
+        α = 1
+        ρ = 0.5
+        c = 0.01 
+
+        err_new = err + 9999
+        while (err_new > err + c*α*(err_vec/err)'*F*Δs) && (j < line_iters)
             # println("*****")
-            Δλ = Δs[(24) .+ (1:5)]
+            Δλ = α*Δs[(24) .+ (1:5)]
             # println(Δs')
             λ_new .= λ + Δλ
 
-            Δx⁺ = Δs[1:24] # order according to fdyn: 
+            Δx⁺ = α*Δs[1:24] # order according to fdyn: 
             # calculate x⁺_new = x⁺ + Δx⁺
             x⁺_new[13*0 .+ (1:3)] = x⁺[13*0 .+ (1:3)] + Δx⁺[12*0 .+ (1:3)]
             x⁺_new[13*0 .+ (4:6)] = x⁺[13*0 .+ (4:6)] + Δx⁺[12*0 .+ (4:6)]
@@ -751,7 +758,7 @@ function discrete_dynamics!(x, u, λ_init, dt)
                 # println(" fdyn: ", norm(fdyn(x⁺_new, x_iter, u, λ_new, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)))
                 # println(" g(x⁺_new,vertices): ", g(x⁺_new,vertices))
             end
-            Δs /= 2
+            α = α*ρ
             j += 1
         end
         # println(" steps: ", j)
@@ -763,41 +770,45 @@ function discrete_dynamics!(x, u, λ_init, dt)
         # convergence check
         if err_new < ϵ
             x .= x_iter
+            # println(round.(fdyn(x⁺, x, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices),digits=6)')
             return x⁺, λ
         end
     end 
     x .= x_iter
+    # println(round.(fdyn(x⁺, x, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices),digits=6)')
     return x⁺, λ   
 end
 
 
 # rigorous test, need to do systme simulation 
 # start from x0, simulate forward 
-U = [10.0; 0.0; 0.0;
-     0.0; 10.0; 0.0;
-     10]
+U = [10.0; 0.0; 20.0;
+     1.0; 1.0; 1.0;
+     1.0]
+# U = 0.01*rand(7)
 λ_init = zeros(5)
 x0 = generate_config(mech, [2.0;2.0;1.0;pi/2], [pi/2]);
-x1, λ1 = discrete_dynamics!(x0, U, λ_init, 0.01)
-x2, λ2 = discrete_dynamics!(x1, U, λ1, 0.01)
-round.(fdyn(x2, x1, U, λ2, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices),digits=6)'
+x1, λ1 = discrete_dynamics!(x0, U, λ_init, 0.001)
+x2, λ2 = discrete_dynamics!(x1, U, λ1, 0.001)
+round.(fdyn(x2, x1, U, λ2, 0.01, link0.m, link1.m, Inerita_a,Inerita_a,vertices),digits=6)'
 
 
 # simulate for 3 seconds, 
 # then visualize it using Jan's code
-Tf =0.5
+Tf =3.5
 dt = 0.005
 N = Int(Tf/dt)
 
-x0 = generate_config(mech, [2.0;2.0;1.0;0], [0]);
+x0 = generate_config(mech, [0.1;0.1;1.0;0.0001], [0.001]);
 x = x0
-λ = 0.05*randn(5)
+λ = zeros(5)
 steps = Base.OneTo(Int(N))
 storage = CD.Storage{Float64}(steps,length(mech.bodies))
 for idx = 1:N
     println("step: ",idx)
     x1, λ1 = discrete_dynamics!(x, U,λ, dt)
     println(norm(fdyn(x1, x, U, λ1, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices)))
+    println(norm(g(x1,vertices)))
     setStates!(mech,x1)
     for i=1:2
         storage.x[i][idx] = mech.bodies[i].state.xc
@@ -812,18 +823,18 @@ visualize(mech,storage, env = "editor")
 
 
 
-""" Define flotation force through controller """
-baseid = eqcs[1].id # this is the floating base, as a free joint
-mech.g = 0 # disable gravity
-function controller!(mechanism, k)
-    # F = SA[0;0; 9.81 * 10.4]
-    F = SA[0;0; 0]
-    τ = SA[0;0;0.0]
-    setForce!(mechanism, geteqconstraint(mechanism,baseid), [F;τ])
-    return
-end
-""" Start simulation """
-# storage = simulate!(mech, timeStep, record = true)
-# visualize(mech, storage, env = "editor")
+# """ Define flotation force through controller """
+# baseid = eqcs[1].id # this is the floating base, as a free joint
+# mech.g = 0 # disable gravity
+# function controller!(mechanism, k)
+#     # F = SA[0;0; 9.81 * 10.4]
+#     F = SA[0;0; 0]
+#     τ = SA[0;0;0.0]
+#     setForce!(mechanism, geteqconstraint(mechanism,baseid), [F;τ])
+#     return
+# end
+# """ Start simulation """
+# # storage = simulate!(mech, timeStep, record = true)
+# # visualize(mech, storage, env = "editor")
 
 
