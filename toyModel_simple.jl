@@ -317,8 +317,38 @@ function g(x,vertices)
     # otherwise the jacobian will not agree with this
     return val
 end
-function Dg(x,vertices)
-    # j87y69i
+
+# instead of just impose constraint on x, evolute to new state, impose constraint on new state
+function gp1(x, dt, vertices)
+    r_a = SVector{3}(x[13*0 .+ (1:3)]) 
+    v_a = SVector{3}(x[13*0 .+ (4:6)]) 
+    r_b = SVector{3}(x[13*1 .+ (1:3)])  
+    v_b = SVector{3}(x[13*1 .+ (4:6)]) 
+    q_a = SVector{4}(x[13*0 .+ (7:10)])
+    w_a = SVector{3}(x[13*0 .+ (11:13)])
+    q_b = SVector{4}(x[13*1 .+ (7:10)])
+    w_b = SVector{3}(x[13*1 .+ (11:13)])
+
+    r_a1 = r_a + v_a*dt
+    r_b1 = r_b + v_b*dt
+
+    q_a1 = dt/2*RS.lmult(q_a)*SVector{4}([sqrt(4/dt^2 -w_a'*w_a);w_a])
+    q_b1 = dt/2*RS.lmult(q_b)*SVector{4}([sqrt(4/dt^2 -w_b'*w_b);w_b])
+
+    val = zeros(eltype(x),5)
+    val[1:3] = (r_b1 + RS.vmat()*RS.rmult(q_b1)'*RS.lmult(q_b1)*RS.hmat()*vertices[2]) - 
+    (r_a1 + RS.vmat()*RS.rmult(q_a1)'*RS.lmult(q_a1)*RS.hmat()*vertices[1])
+    tmp = RS.vmat()*RS.lmult(q_a1)'*q_b1
+    val[4] = tmp[2]
+    val[5] = tmp[1]   
+    # use cmat = [0 1 0; 
+    #             1 0 0]
+    # otherwise the jacobian will not agree with this
+    return val
+end
+
+# jacobian of g, treat quaternion as normal 4 vectors
+function Dg(x, vertices)
     q_a = SVector{4}(x[13*0 .+ (7:10)])
     q_b = SVector{4}(x[13*1 .+ (7:10)])   #  q_b[1] q_w,  q_b[2] q_v1,  q_b[3] q_v2,  q_b[4] q_v3
     Dgmtx = zeros(5,26)
@@ -334,6 +364,56 @@ function Dg(x,vertices)
                            ]
     return Dgmtx
 end
+
+# jacobian of gp1, treat quaternion as normal 4 vectors
+function Dgp1(x,dt, vertices)
+    r_a = SVector{3}(x[13*0 .+ (1:3)]) 
+    v_a = SVector{3}(x[13*0 .+ (4:6)]) 
+    r_b = SVector{3}(x[13*1 .+ (1:3)])  
+    v_b = SVector{3}(x[13*1 .+ (4:6)]) 
+    q_a = SVector{4}(x[13*0 .+ (7:10)])
+    w_a = SVector{3}(x[13*0 .+ (11:13)])
+    q_b = SVector{4}(x[13*1 .+ (7:10)])
+    w_b = SVector{3}(x[13*1 .+ (11:13)])
+
+    r_a1 = r_a + v_a*dt
+    r_b1 = r_b + v_b*dt
+
+    q_a1 = dt/2*RS.lmult(q_a)*SVector{4}([sqrt(4/dt^2 -w_a'*w_a);w_a])
+    q_b1 = dt/2*RS.lmult(q_b)*SVector{4}([sqrt(4/dt^2 -w_b'*w_b);w_b])
+
+    Dgmtx = zeros(5,26)
+    ∂dgp1∂dra1 = [-I;zeros(2,3)]
+    ∂dgp1∂drb1 = [ I;zeros(2,3)]
+    ∂dgp1∂dqa1 = [-2*RS.vmat()*RS.rmult(q_a1)'*RS.rmult(RS.hmat()*vertices[1]);
+                    [q_b1[3]  q_b1[4] -q_b1[1] -q_b1[2];
+                    q_b1[2] -q_b1[1] -q_b1[4] q_b1[3]]
+                 ]
+    ∂dgp1∂dqb1 =[2*RS.vmat()*RS.rmult(q_b1)'*RS.rmult(RS.hmat()*vertices[2]);
+                     [-q_a1[3] -q_a1[4]  q_a1[1] q_a1[2];
+                       -q_a1[2]  q_a1[1]  q_a1[4] -q_a1[3]]
+                 ]
+    ∂dra1∂dva = I(3)*dt
+    ∂drb1∂dvb = I(3)*dt   
+    ∂dqa1∂dqa = dt/2*RS.rmult(SVector{4}([sqrt(4/dt^2 -w_a'*w_a);w_a]))      
+    ∂dqa1∂dwa = dt/2*(-q_a*w_a'/sqrt(4/dt^2 -w_a'*w_a) + RS.lmult(q_a)*RS.hmat())    
+
+    ∂dqb1∂dqb = dt/2*RS.rmult(SVector{4}([sqrt(4/dt^2 -w_b'*w_b);w_b]))      
+    ∂dqb1∂dwb = dt/2*(-q_b*w_b'/sqrt(4/dt^2 -w_b'*w_b) + RS.lmult(q_b)*RS.hmat())  
+
+    Dgmtx[:,13*0 .+ (1:3)] =  ∂dgp1∂dra1 # dg/dra
+    Dgmtx[:,13*0 .+ (4:6)] =  ∂dgp1∂dra1*∂dra1∂dva# dg/dva
+
+    Dgmtx[:,13*1 .+ (1:3)]  = ∂dgp1∂drb1  # dg/drb
+    Dgmtx[:,13*1 .+ (4:6)]  =  ∂dgp1∂drb1*∂drb1∂dvb# dg/dvb
+
+    Dgmtx[:,13*0 .+ (7:10)] = ∂dgp1∂dqa1*∂dqa1∂dqa# dg/dqa
+    Dgmtx[:,13*0 .+ (11:13)] = ∂dgp1∂dqa1*∂dqa1∂dwa# dg/dwa
+    Dgmtx[:,13*1 .+ (7:10)] =  ∂dgp1∂dqb1*∂dqb1∂dqb# dg/dqb
+    Dgmtx[:,13*1 .+ (11:13)] =  ∂dgp1∂dqb1*∂dqb1∂dwb# dg/dwb
+    return Dgmtx
+end
+
 
 # this calculates a part of Dg*attiG, only related to G_qa , dim is 5x3
 function Gqa(q_a,q_b,vertices)  
@@ -396,6 +476,16 @@ gaug(z) = g(z,vertices)
 Dgforward = ForwardDiff.jacobian(gaug,x0)
 Dgforward*state_diff_attiG(x0)*state_error
 
+@test Dgforward ≈ Dgmtx
+
+dt = 0.01;
+gp1val = gp1(x0,dt,vertices)
+Dp1gmtx = Dgp1(x0,dt,vertices)
+gp1aug(z) = gp1(z,dt,vertices)
+Dgp1forward = ForwardDiff.jacobian(gp1aug,x0)
+@test Dgp1forward ≈ Dp1gmtx
+
+
 #why this happens? further dig into rotation error
 xxx = RS.rotation_error(qdp[1],qd[1], RS.CayleyMap())
 qdc  = RS.lmult(qd[1])*1/sqrt(1+norm(xxx)^2)*[1;xxx]
@@ -441,10 +531,13 @@ function fdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     Ma = diagm([ma,ma,ma])
     Mb = diagm([mb,mb,mb])
     # eqn 3 4 in my notes, notice gravity direction,    Gra's express
-    aa = Ma*(vat1-vat)/Δt + Ma*[0;0;g]
-    fdyn_vec[7:9] =  aa - Ft - [-I(3);zeros(2,3)]'*λt   # Gra'λ
-    bb = Mb*(vbt1-vbt)/Δt + Mb*[0;0;g]
-    fdyn_vec[10:12] = bb - [I(3);zeros(2,3)]'*λt # Grb'λ
+    aa = Ma*(vat1-vat) + Ma*[0;0;g]*Δt
+    fdyn_vec[7:9] =  aa - Ft*Δt - [-I(3);zeros(2,3)]'*λt*Δt   # Gra'λ
+
+    # println(fdyn_vec[1:3])
+
+    bb = Mb*(vbt1-vbt) + Mb*[0;0;g]*Δt
+    fdyn_vec[10:12] = bb - [I(3);zeros(2,3)]'*λt*Δt # Grb'λ
     
     # println(wat'*wat)
     # println(xt[13*1 .+ (11:13)])
@@ -462,7 +555,9 @@ function fdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     # println(wat1'*wat1)
     # println(wat1)
     a = Ja * wat1 * sqrt(4/Δt^2 -wat1'*wat1) + cross(wat1, (Ja * wat1)) - Ja * wat  * sqrt(4/Δt^2 - wat'*wat) + cross(wat,(Ja * wat))
-    k = - 2*taut  - Gqamtx'*λt
+    k = - 2*taut + 2*[0;0;tau_joint] - Gqamtx'*λt
+    # println(λt)
+    # println(- Gqamtx'*λt)
     # println(a)
 
     # println(k)
@@ -503,14 +598,14 @@ function Dfdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     Dfmtx[4:6, (26 + 13*1).+(1:3)] = -I(3)                     # 3x3
     Dfmtx[4:6, (26 + 13*1).+(4:6)] = -I(3)*Δt                  # 3x3
     # derivative of eqn 3 
-    Dfmtx[7:9, (13*0).+(4:6)] = Ma/Δt                             # 3x3
-    Dfmtx[7:9, (26 + 13*0).+(4:6)] = -Ma/Δt                       # 3x3
-    Dfmtx[7:9, (26 + 26).+(1:3)] = -I(3)                    # 3x3
-    Dfmtx[7:9, (26 + 26 + 7).+(1:5)] = - [-I;zeros(2,3)]'   # 3x3
+    Dfmtx[7:9, (13*0).+(4:6)] = Ma                             # 3x3
+    Dfmtx[7:9, (26 + 13*0).+(4:6)] = -Ma                       # 3x3
+    Dfmtx[7:9, (26 + 26).+(1:3)] = -I(3)*Δt                    # 3x3
+    Dfmtx[7:9, (26 + 26 + 7).+(1:5)] = - [-I;zeros(2,3)]'*Δt   # 3x3
     # derivative of eqn 4 
-    Dfmtx[10:12, (13*1).+(4:6)] = Mb/Δt                           # 3x3
-    Dfmtx[10:12, (26 + 13*1).+(4:6)] = -Mb/Δt                     # 3x3
-    Dfmtx[10:12, (26 + 26 + 7).+(1:5)] = - [I;zeros(2,3)]'  # 3x3
+    Dfmtx[10:12, (13*1).+(4:6)] = Mb                           # 3x3
+    Dfmtx[10:12, (26 + 13*1).+(4:6)] = -Mb                     # 3x3
+    Dfmtx[10:12, (26 + 26 + 7).+(1:5)] = - [I;zeros(2,3)]'*Δt  # 3x3
     # derivative of eqn 5   
     Dfmtx[13:16, (13*0).+(7:10)] = I(4)                        # 4x4
     Dfmtx[13:16, (26 + 13*0).+(7:10)] = -Δt/2*RS.rmult(SVector{4}([sqrt(4/Δt^2 -wat'*wat);wat]))   # 4x4
@@ -569,7 +664,7 @@ function Dfdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     Dfmtx[21:23, (13*1).+(7:10)] =  -[row1 row2 row3]'  # in the eqn 7 we have -G_qa1t'*λt
 
     Dfmtx[21:23, (26 + 26).+(4:6)] =  -2*I(3)
-    # Dfmtx[21:23, (26 + 26).+(7)] =  [0;0;2]
+    Dfmtx[21:23, (26 + 26).+(7)] =  [0;0;2]
     Dfmtx[21:23, (26 + 26 + 7).+(1:5)] = -Gqamtx' 
     # derivative of eqn 8 (very challenging)
     # d (Jb * wbt1 * sqrt(4/Δt^2 -wbt1'*wbt1) + wbt1 × (Jb * wbt1)) / d wbt1
@@ -693,8 +788,18 @@ function discrete_dynamics!(x, u, λ_init, dt)
     λ = zeros(eltype(x),5)
     # λ = λ_init
     x⁺ = Vector(x)
-    x_iter = copy(x)
-    x⁺_new, x_new, λ_new = copy(x⁺), copy(x), copy(λ)
+
+    # UPDATE ONCE should be enough
+    x⁺[13*0 .+ (1:3)] = x[13*0 .+ (1:3)] + x[13*0 .+ (4:6)]*dt
+    wat = x[13*0 .+ (11:13)]
+    qat = x[13*0 .+ (7:10)]
+    x⁺[13*0 .+ (7:10)] = dt/2*RS.lmult(SVector{4}(qat))*SVector{4}([sqrt(4/dt^2 -wat'*wat);wat])
+    x⁺[13*1 .+ (1:3)] = x[13*1 .+ (1:3)] + x[13*1 .+ (4:6)]*dt
+    wbt = x[13*1 .+ (11:13)]
+    qbt = x[13*1 .+ (7:10)]
+    x⁺[13*1 .+ (7:10)] = dt/2*RS.lmult(SVector{4}(qbt))*SVector{4}([sqrt(4/dt^2 -wbt'*wbt);wbt])
+
+    x⁺_new, λ_new = copy(x⁺), copy(λ)
 
     max_iters, line_iters, ϵ = 500, 80, 1e-3
     for i=1:max_iters  
@@ -702,24 +807,21 @@ function discrete_dynamics!(x, u, λ_init, dt)
 
         # Newton step    
         # 31 = 26 + 5
-        err_vec = [fdyn(x⁺, x_iter, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices);
-                   g(x⁺,vertices)]
+        err_vec = [fdyn(x⁺, x, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices);
+                   gp1(x⁺,dt,vertices)]
 
         err = norm(err_vec)
         # println(" err_vec: ", err)
         # jacobian of x+ and λ
-        G = Dg(x⁺,vertices)*state_diff_attiG(x⁺)
-        # faug(z) = fdyn(z[1:26], z[27:52], z[53:59], z[60:64], dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices)
-        # Df2 = ForwardDiff.jacobian(faug,[x⁺;x_iter;u;λ])
-        # Fdyn = Df2*attiG_f(x⁺, x_iter)
-        Fdyn = Dfdyn(x⁺, x_iter, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices)*attiG_f(x⁺, x_iter)
+        G = Dgp1(x⁺,dt,vertices)*state_diff_attiG(x⁺)
+        Fdyn = Dfdyn(x⁺, x, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices)*attiG_f(x⁺, x)
 
 
 
-        # 31 x 29  (24+5) # x⁺ , lambda
-        F = [Fdyn[:,1:24] Fdyn[:,48+7+1:48+7+5];
-                       G   spzeros(5,5)]
-        Δs = -F\err_vec  #29x1
+        # 31 x 17  (12+5) # x⁺ velocity part , lambda
+        F = [Fdyn[:,4:6] Fdyn[:,10:12] Fdyn[:,16:18] Fdyn[:,22:24] Fdyn[:,48+7+1:48+7+5];
+                G[:,4:6]    G[:,10:12]    G[:,16:18]    G[:,22:24]  spzeros(5,5)]
+        Δs = -F\err_vec  #17x1
        
         # backtracking line search
         j=0
@@ -730,30 +832,44 @@ function discrete_dynamics!(x, u, λ_init, dt)
         err_new = err + 9999
         while (err_new > err + c*α*(err_vec/err)'*F*Δs) && (j < line_iters)
             # println("*****")
-            Δλ = α*Δs[(24) .+ (1:5)]
+            Δλ = α*Δs[(12) .+ (1:5)]
             # println(Δs')
             λ_new .= λ + Δλ
 
-            Δx⁺ = α*Δs[1:24] # order according to fdyn: 
+            Δx⁺ = Δs[1:12] # order according to fdyn: 
             # calculate x⁺_new = x⁺ + Δx⁺
-            x⁺_new[13*0 .+ (1:3)] = x⁺[13*0 .+ (1:3)] + Δx⁺[12*0 .+ (1:3)]
-            x⁺_new[13*0 .+ (4:6)] = x⁺[13*0 .+ (4:6)] + Δx⁺[12*0 .+ (4:6)]
-            phi = Δx⁺[12*0 .+ (7:9)]
-            x⁺_new[13*0 .+ (7:10)] = RS.lmult(SVector{4}(x⁺[13*0 .+ (7:10)]))*[1;phi]/(sqrt(1+norm(phi)^2))
-            x⁺_new[13*0 .+ (11:13)] = x⁺[13*0 .+ (11:13)] + Δx⁺[12*0 .+ (10:12)]
+            # ra t+1 # direct intergration
+            # x⁺_new[13*0 .+ (1:3)] = x_iter[13*0 .+ (1:3)] + x_iter[13*0 .+ (4:6)]*dt
 
-            x⁺_new[13*1 .+ (1:3)] = x⁺[13*1 .+ (1:3)] + Δx⁺[12*1 .+ (1:3)]
-            x⁺_new[13*1 .+ (4:6)] = x⁺[13*1 .+ (4:6)] + Δx⁺[12*1 .+ (4:6)]
-            phi = Δx⁺[12*1 .+ (7:9)]
-            x⁺_new[13*1 .+ (7:10)] = RS.lmult(SVector{4}(x⁺[13*1 .+ (7:10)]))*[1;phi]/(sqrt(1+norm(phi)^2))
-            x⁺_new[13*1 .+ (11:13)] = x⁺[13*1 .+ (11:13)] + Δx⁺[12*1 .+ (10:12)]
+            # va t+1, line search 
+            x⁺_new[13*0 .+ (4:6)] = x⁺[13*0 .+ (4:6)] + α*Δx⁺[1:3]
 
-            # # update the velocity part of x 
-            # Δx = Δs[(24) .+ (1:12)]   # only velocity part
-            # x_new[13*0 .+ (4:6)] = x_iter[13*0 .+ (4:6)] + Δx[1:3] # qa linear vel
-            # x_new[13*0 .+ (11:13)] = x_iter[13*0 .+ (11:13)] + Δx[4:6] # qa angular vel
-            # x_new[13*1 .+ (4:6)] = x_iter[13*1 .+ (4:6)] + Δx[7:9] # qb linear vel
-            # x_new[13*1 .+ (11:13)] = x_iter[13*1 .+ (11:13)] + Δx[10:12] # qb angular vel
+            # qa t+1  direct intergration
+            # phi = α*Δx⁺[12*0 .+ (7:9)]
+            # x⁺_new[13*0 .+ (7:10)] = RS.lmult(SVector{4}(x⁺[13*0 .+ (7:10)]))*[1;phi]/(sqrt(1+norm(phi)^2))
+            # wat = x_iter[13*0 .+ (11:13)]
+            # qat = x_iter[13*0 .+ (7:10)]
+            # x⁺_new[13*0 .+ (7:10)] = dt/2*RS.lmult(SVector{4}(qat))*SVector{4}([sqrt(4/dt^2 -wat'*wat);wat])
+
+            # wa t+1
+            x⁺_new[13*0 .+ (11:13)] = x⁺[13*0 .+ (11:13)] + α*Δx⁺[4:6]
+
+            # rb t+1
+            # x⁺_new[13*1 .+ (1:3)] = x_iter[13*1 .+ (1:3)] + x_iter[13*1 .+ (4:6)]*dt
+
+            # vb t+1
+            x⁺_new[13*1 .+ (4:6)] = x⁺[13*1 .+ (4:6)] + α*Δx⁺[7:9]
+
+            # qb t+1  direct intergration
+            # phi = α*Δx⁺[12*1 .+ (7:9)]
+            # x⁺_new[13*1 .+ (7:10)] = RS.lmult(SVector{4}(x⁺[13*1 .+ (7:10)]))*[1;phi]/(sqrt(1+norm(phi)^2))
+            # wbt = x_iter[13*1 .+ (11:13)]
+            # qbt = x_iter[13*1 .+ (7:10)]
+            # x⁺_new[13*1 .+ (7:10)] = dt/2*RS.lmult(SVector{4}(qbt))*SVector{4}([sqrt(4/dt^2 -wbt'*wbt);wbt])
+
+            # wb t+1
+            x⁺_new[13*1 .+ (11:13)] = x⁺[13*1 .+ (11:13)] + α*Δx⁺[10:12]
+
 
             ωa⁺ = x⁺_new[13*0 .+ (11:13)]
             ωb⁺ = x⁺_new[13*1 .+ (11:13)]
@@ -762,8 +878,8 @@ function discrete_dynamics!(x, u, λ_init, dt)
             # ωs⁺ = [ωa⁺;ωb⁺;ωa;ωb]
             
             if (4/dt^2 >= dot(ωa⁺,ωa⁺)) && (4/dt^2 >= dot(ωb⁺,ωb⁺)) 
-                err_vec = [fdyn(x⁺_new, x_iter, u, λ_new, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices);
-                            g(x⁺_new,vertices)]
+                err_vec = [fdyn(x⁺_new, x, u, λ_new, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices);
+                            gp1(x⁺_new,dt,vertices)]
                 err_new = norm(err_vec)
                 # println(" fdyn: ", norm(fdyn(x⁺_new, x_iter, u, λ_new, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)))
                 # println(" g(x⁺_new,vertices): ", g(x⁺_new,vertices))
@@ -772,19 +888,17 @@ function discrete_dynamics!(x, u, λ_init, dt)
             j += 1
         end
         # println(" steps: ", j)
-        # println(" err_new: ", err_new)
+        println(" err_new: ", err_new)
         x⁺ .= x⁺_new
         # x_iter .= x_new
         λ .= λ_new
 
         # convergence check
         if err_new < ϵ
-            x .= x_iter
             # println(round.(fdyn(x⁺, x, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices),digits=6)')
             return x⁺, λ
         end
     end 
-    x .= x_iter
     # println(round.(fdyn(x⁺, x, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices),digits=6)')
     return x⁺, λ   
 end
@@ -793,19 +907,34 @@ end
 # rigorous test, need to do systme simulation 
 # start from x0, simulate forward 
 U = [0.0; 0.0; 0.0;
-     1.0; 1.0; 0.0;
-     1.0]
+     0.0; 1.0; 0.0;
+     0.0]
 # U = 0.01*rand(7)
+dt = 0.001;
 λ_init = zeros(5)
-x0 = generate_config(mech, [2.0;2.0;1.0;pi/2], [pi/2]);
-x1, λ1 = discrete_dynamics!(x0, U, λ_init, 0.001)
-x2, λ2 = discrete_dynamics!(x1, U, λ1, 0.001)
-round.(fdyn(x2, x1, U, λ2, 0.01, link0.m, link1.m, Inerita_a,Inerita_a,vertices),digits=6)'
+λ = λ_init
+# x0 = generate_config(mech, [2.0;2.0;1.0;pi/2], [pi/2]);
+x0 = generate_config(mech, [0.1;0.1;1.0;0.0001], [0.001]);
+x = x0;
+for i=1:5
+    println("step: ",i)
+    x1, λ = discrete_dynamics!(x, U, λ, dt)
+    println(norm(fdyn(x1, x, U, λ, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices)))
+    println(norm(g(x1,vertices)))
+    x = x1
+end
+xn = x
+xn1, λn1 = discrete_dynamics!(xn, U, λ, dt)
+round.(fdyn(xn1, xn, U, λn1, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices),digits=6)'
+println(norm(fdyn(xn1, xn, U, λn1, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices)))
+println(norm(g(xn1,vertices)))
+
+# test 
 
 
 # simulate for 3 seconds, 
 # then visualize it using Jan's code
-Tf =0.5
+Tf =3.5
 dt = 0.005
 N = Int(Tf/dt)
 
