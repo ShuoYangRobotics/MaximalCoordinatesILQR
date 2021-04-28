@@ -179,7 +179,7 @@ Inerita_b = diagm([1/12*link1.m*(arm_length^2+arm_depth^2),1/12*link1.m*(arm_wid
 
 
 # Constraints on the arms
-joint1_axis = [0;0;1] # joint 1 rotates about z axis
+joint1_axis = [0;1;0] # joint 1 rotates about z axis
 
 vert01 = [width/2; 0; 0] # connection offset from link0 to joint1
 vert11 = [-arm_width/2; 0; 0] # connection offset from link1 to joint1
@@ -485,6 +485,12 @@ gp1aug(z) = gp1(z,dt,vertices)
 Dgp1forward = ForwardDiff.jacobian(gp1aug,x0)
 @test Dgp1forward ≈ Dp1gmtx
 
+q_a = UnitQuaternion(RotX(0.03))
+q_b = UnitQuaternion(RotY(0.03))
+vertices = [[1;2;3],[4,5,6]]
+Gqa(RS.params(q_a),RS.params(q_b),vertices)
+Gqb(RS.params(q_a),RS.params(q_b),vertices)
+state_diff_attiG(x0)
 
 #why this happens? further dig into rotation error
 xxx = RS.rotation_error(qdp[1],qd[1], RS.CayleyMap())
@@ -703,6 +709,7 @@ function Dfdyn(xt1, xt, ut, λt, Δt, ma, mb, Ja,Jb,vertices)
     return Dfmtx
 end
 
+#13*(nb+1)*2 + 6 + (nb) + 5*(nb)   -  12*(nb+1)*2 + 6 + (nb) + 5*(nb) 
 # attitude Jacobian So that Dfmtx * attiG_mtx ==> size(26,60) where 60 is the size of error state 
 # this is really cumbersome to manually construct. something like state_diff_jacobian in Altro is definitely better
 function attiG_f(xt1, xt)
@@ -731,8 +738,9 @@ end
 
 # basic test of fdyn 
 begin
-
-    x0 = generate_config_with_rand_vel(mech, [2.0;2.0;1.0;pi/4], [pi/4]);
+    using Random
+    Random.seed!(123);
+    x0 = generate_config_with_rand_vel(mech, [2.0;2.0;1.0;pi/4], [pi/4])
     dr = pi/14
     x1 = generate_config_with_rand_vel(mech, [2.0;2.0;1.0;pi/4+dr], [pi/4+dr]);
     u = 2*randn(7)
@@ -744,34 +752,37 @@ begin
     dxv[(13*0).+(11:13)] = randn(3)
     dxv[(13*1).+(4:6)] = randn(3)
     dxv[(13*1).+(11:13)] = randn(3)
-    f1 = fdyn(x1, x0, u, λ, 0.1, link0.m, link1.m, Inerita_a,Inerita_a,vertices)
-    f2 = fdyn(x1+dxv, x0+dxv, u+du, λ+dλ, 0.1, link0.m, link1.m, Inerita_a,Inerita_a,vertices)
+    dt = 0.01
+    vertices = eqc.constraints[1].vertices # COM pos of front link and back link
+    f1 = fdyn(x1, x0, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_b,vertices)
+    @show f1
+    f2 = fdyn(x1+dxv, x0+dxv, u+du, λ+dλ, dt, link0.m, link1.m, Inerita_a,Inerita_b,vertices)
     
-    # basic test of Dfyn*attiG 
-    # basic test of Dfyn*attiG 
-    # basic test of Dfyn*attiG 
-    Dfmtx = Dfdyn(x1, x0, u, λ, 0.1, link0.m, link1.m, Inerita_a,Inerita_a,vertices)
+    # # basic test of Dfyn*attiG 
+    # # basic test of Dfyn*attiG 
+    # # basic test of Dfyn*attiG 
+    Dfmtx = Dfdyn(x1, x0, u, λ, 0.1, link0.m, link1.m, Inerita_a,Inerita_b,vertices)
     attiG_mtx = attiG_f(x1,x0)
     
-    state_diff = zeros(60)
-    state_diff[(12*0).+(4:6)] = dxv[(13*0).+(4:6)]
-    state_diff[(12*0).+(10:12)] = dxv[(13*0).+(11:13)]
-    state_diff[(12*1).+(4:6)] = dxv[(13*1).+(4:6)]
-    state_diff[(12*1).+(10:12)] = dxv[(13*1).+(11:13)]
-    state_diff[(24+12*0).+(4:6)] = dxv[(13*0).+(4:6)]
-    state_diff[(24+12*0).+(10:12)] = dxv[(13*0).+(11:13)]
-    state_diff[(24+12*1).+(4:6)] = dxv[(13*1).+(4:6)]
-    state_diff[(24+12*1).+(10:12)] = dxv[(13*1).+(11:13)]
+    # state_diff = zeros(60)
+    # state_diff[(12*0).+(4:6)] = dxv[(13*0).+(4:6)]
+    # state_diff[(12*0).+(10:12)] = dxv[(13*0).+(11:13)]
+    # state_diff[(12*1).+(4:6)] = dxv[(13*1).+(4:6)]
+    # state_diff[(12*1).+(10:12)] = dxv[(13*1).+(11:13)]
+    # state_diff[(24+12*0).+(4:6)] = dxv[(13*0).+(4:6)]
+    # state_diff[(24+12*0).+(10:12)] = dxv[(13*0).+(11:13)]
+    # state_diff[(24+12*1).+(4:6)] = dxv[(13*1).+(4:6)]
+    # state_diff[(24+12*1).+(10:12)] = dxv[(13*1).+(11:13)]
 
-    state_diff[(24+24).+(1:7)] = du
-    state_diff[(24+24+7).+(1:5)] = dλ
-    f2 - (f1 + Dfmtx*attiG_mtx*state_diff)   
+    # state_diff[(24+24).+(1:7)] = du
+    # state_diff[(24+24+7).+(1:5)] = dλ
+    # f2 - (f1 + Dfmtx*attiG_mtx*state_diff)   
 
     # compare with Forward diff
-    faug(z) = fdyn(z[1:26], z[27:52], z[53:59], z[60:64], 0.1, link0.m, link1.m, Inerita_a,Inerita_a,vertices)
+    faug(z) = fdyn(z[1:26], z[27:52], z[53:59], z[60:64], 0.1, link0.m, link1.m, Inerita_a,Inerita_b,vertices)
     Df2 = ForwardDiff.jacobian(faug,[x1;x0;u;λ])
 
-    f2 - (f1 + Df2*attiG_mtx*state_diff)
+    # f2 - (f1 + Df2*attiG_mtx*state_diff)
     Dfmine = Dfmtx*attiG_mtx
     Dfdiff = Df2*attiG_mtx
     @test Dfmtx*attiG_mtx ≈ Df2*attiG_mtx
@@ -786,11 +797,11 @@ end
 # this function modifies x!
 function discrete_dynamics!(x, u, λ_init, dt)
     λ = zeros(eltype(x),5)
-    # λ = λ_init
+    λ = λ_init
     x⁺ = Vector(x)
 
-    # UPDATE ONCE should be enough
-    x⁺[13*0 .+ (1:3)] = x[13*0 .+ (1:3)] + x[13*0 .+ (4:6)]*dt
+    # can be viewed as an initialization strategy
+    x⁺[13*0 .+ (1:3)] = x[13*0 .+ (1:3)] + x[13*0 .+ (4:6)]*dt 
     wat = x[13*0 .+ (11:13)]
     qat = x[13*0 .+ (7:10)]
     x⁺[13*0 .+ (7:10)] = dt/2*RS.lmult(SVector{4}(qat))*SVector{4}([sqrt(4/dt^2 -wat'*wat);wat])
@@ -801,27 +812,27 @@ function discrete_dynamics!(x, u, λ_init, dt)
 
     x⁺_new, λ_new = copy(x⁺), copy(λ)
 
-    max_iters, line_iters, ϵ = 500, 80, 1e-3
+    max_iters, line_iters, ϵ = 1500, 380, 1e-2
     for i=1:max_iters  
         # print("iter ", i, ": ")
 
         # Newton step    
         # 31 = 26 + 5
-        err_vec = [fdyn(x⁺, x, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices);
+        err_vec = [fdyn(x⁺, x, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_b,vertices);
                    gp1(x⁺,dt,vertices)]
 
         err = norm(err_vec)
         # println(" err_vec: ", err)
         # jacobian of x+ and λ
         G = Dgp1(x⁺,dt,vertices)*state_diff_attiG(x⁺)
-        Fdyn = Dfdyn(x⁺, x, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices)*attiG_f(x⁺, x)
+        Fdyn = Dfdyn(x⁺, x, u, λ, dt, link0.m, link1.m, Inerita_a,Inerita_b,vertices)*attiG_f(x⁺, x)
 
 
 
-        # 31 x 17  (12+5) # x⁺ velocity part , lambda
-        F = [Fdyn[:,4:6] Fdyn[:,10:12] Fdyn[:,16:18] Fdyn[:,22:24] Fdyn[:,48+7+1:48+7+5];
-                G[:,4:6]    G[:,10:12]    G[:,16:18]    G[:,22:24]  spzeros(5,5)]
-        Δs = -F\err_vec  #17x1
+        # 31 x 17  (29+5) # x⁺ , lambda
+        F = [Fdyn[:,1:24] Fdyn[:,48+7+1:48+7+5];
+                G  spzeros(5,5)]
+        Δs = -F\err_vec  #29x1
        
         # backtracking line search
         j=0
@@ -832,43 +843,46 @@ function discrete_dynamics!(x, u, λ_init, dt)
         err_new = err + 9999
         while (err_new > err + c*α*(err_vec/err)'*F*Δs) && (j < line_iters)
             # println("*****")
-            Δλ = α*Δs[(12) .+ (1:5)]
+            Δλ = α*Δs[(24) .+ (1:5)]
             # println(Δs')
             λ_new .= λ + Δλ
 
-            Δx⁺ = Δs[1:12] # order according to fdyn: 
+            Δx⁺ = Δs[1:24] # order according to fdyn: 
             # calculate x⁺_new = x⁺ + Δx⁺
             # ra t+1 # direct intergration
             # x⁺_new[13*0 .+ (1:3)] = x_iter[13*0 .+ (1:3)] + x_iter[13*0 .+ (4:6)]*dt
 
+            x⁺_new[13*0 .+ (1:3)] = x⁺[13*0 .+ (1:3)] + α*Δx⁺[1:3]
+
             # va t+1, line search 
-            x⁺_new[13*0 .+ (4:6)] = x⁺[13*0 .+ (4:6)] + α*Δx⁺[1:3]
+            x⁺_new[13*0 .+ (4:6)] = x⁺[13*0 .+ (4:6)] + α*Δx⁺[4:6]
 
             # qa t+1  direct intergration
-            # phi = α*Δx⁺[12*0 .+ (7:9)]
-            # x⁺_new[13*0 .+ (7:10)] = RS.lmult(SVector{4}(x⁺[13*0 .+ (7:10)]))*[1;phi]/(sqrt(1+norm(phi)^2))
+            phi = α*Δx⁺[12*0 .+ (7:9)]
+            x⁺_new[13*0 .+ (7:10)] = RS.lmult(SVector{4}(x⁺[13*0 .+ (7:10)]))*[1;phi]/(sqrt(1+norm(phi)^2))
             # wat = x_iter[13*0 .+ (11:13)]
             # qat = x_iter[13*0 .+ (7:10)]
             # x⁺_new[13*0 .+ (7:10)] = dt/2*RS.lmult(SVector{4}(qat))*SVector{4}([sqrt(4/dt^2 -wat'*wat);wat])
 
             # wa t+1
-            x⁺_new[13*0 .+ (11:13)] = x⁺[13*0 .+ (11:13)] + α*Δx⁺[4:6]
+            x⁺_new[13*0 .+ (11:13)] = x⁺[13*0 .+ (11:13)] + α*Δx⁺[12*0 .+ (10:12)]
 
             # rb t+1
             # x⁺_new[13*1 .+ (1:3)] = x_iter[13*1 .+ (1:3)] + x_iter[13*1 .+ (4:6)]*dt
+            x⁺_new[13*1 .+ (4:6)] = x⁺[13*1 .+ (4:6)] + α*Δx⁺[12*1 .+ (1:3)]
 
             # vb t+1
-            x⁺_new[13*1 .+ (4:6)] = x⁺[13*1 .+ (4:6)] + α*Δx⁺[7:9]
+            x⁺_new[13*1 .+ (4:6)] = x⁺[13*1 .+ (4:6)] + α*Δx⁺[12*1 .+ (4:6)]
 
             # qb t+1  direct intergration
-            # phi = α*Δx⁺[12*1 .+ (7:9)]
-            # x⁺_new[13*1 .+ (7:10)] = RS.lmult(SVector{4}(x⁺[13*1 .+ (7:10)]))*[1;phi]/(sqrt(1+norm(phi)^2))
+            phi = α*Δx⁺[12*1 .+ (7:9)]
+            x⁺_new[13*1 .+ (7:10)] = RS.lmult(SVector{4}(x⁺[13*1 .+ (7:10)]))*[1;phi]/(sqrt(1+norm(phi)^2))
             # wbt = x_iter[13*1 .+ (11:13)]
             # qbt = x_iter[13*1 .+ (7:10)]
             # x⁺_new[13*1 .+ (7:10)] = dt/2*RS.lmult(SVector{4}(qbt))*SVector{4}([sqrt(4/dt^2 -wbt'*wbt);wbt])
 
             # wb t+1
-            x⁺_new[13*1 .+ (11:13)] = x⁺[13*1 .+ (11:13)] + α*Δx⁺[10:12]
+            x⁺_new[13*1 .+ (11:13)] = x⁺[13*1 .+ (11:13)] + α*Δx⁺[12*1 .+ (10:12)]
 
 
             ωa⁺ = x⁺_new[13*0 .+ (11:13)]
@@ -878,7 +892,7 @@ function discrete_dynamics!(x, u, λ_init, dt)
             # ωs⁺ = [ωa⁺;ωb⁺;ωa;ωb]
             
             if (4/dt^2 >= dot(ωa⁺,ωa⁺)) && (4/dt^2 >= dot(ωb⁺,ωb⁺)) 
-                err_vec = [fdyn(x⁺_new, x, u, λ_new, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices);
+                err_vec = [fdyn(x⁺_new, x, u, λ_new, dt, link0.m, link1.m, Inerita_a,Inerita_b,vertices);
                             gp1(x⁺_new,dt,vertices)]
                 err_new = norm(err_vec)
                 # println(" fdyn: ", norm(fdyn(x⁺_new, x_iter, u, λ_new, dt, 1, 1, diagm([1,1,1]),diagm([1,1,1]),vertices)))
@@ -888,7 +902,7 @@ function discrete_dynamics!(x, u, λ_init, dt)
             j += 1
         end
         # println(" steps: ", j)
-        println(" err_new: ", err_new)
+        # println(" err_new: ", err_new)
         x⁺ .= x⁺_new
         # x_iter .= x_new
         λ .= λ_new
@@ -906,27 +920,29 @@ end
 
 # rigorous test, need to do systme simulation 
 # start from x0, simulate forward 
-U = [0.0; 0.0; 0.0;
-     0.0; 1.0; 0.0;
-     0.0]
+U = [0.0; 0.0; 1.0;
+     0.0; 0.0; 0.0;
+     1.0]
 # U = 0.01*rand(7)
 dt = 0.001;
 λ_init = zeros(5)
 λ = λ_init
 # x0 = generate_config(mech, [2.0;2.0;1.0;pi/2], [pi/2]);
-x0 = generate_config(mech, [0.1;0.1;1.0;0.0001], [0.001]);
+x0 = generate_config(mech, [0.1;0.1;1.0;pi/2], [0.001]);
+
+x1, λ = discrete_dynamics!(x, U, λ, dt)
 x = x0;
 for i=1:5
     println("step: ",i)
     x1, λ = discrete_dynamics!(x, U, λ, dt)
-    println(norm(fdyn(x1, x, U, λ, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices)))
+    println(norm(fdyn(x1, x, U, λ, dt, link0.m, link1.m, Inerita_a,Inerita_b,vertices)))
     println(norm(g(x1,vertices)))
     x = x1
 end
 xn = x
 xn1, λn1 = discrete_dynamics!(xn, U, λ, dt)
-round.(fdyn(xn1, xn, U, λn1, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices),digits=6)'
-println(norm(fdyn(xn1, xn, U, λn1, dt, link0.m, link1.m, Inerita_a,Inerita_a,vertices)))
+round.(fdyn(xn1, xn, U, λn1, dt, link0.m, link1.m, Inerita_a,Inerita_b,vertices),digits=6)'
+println(norm(fdyn(xn1, xn, U, λn1, dt, link0.m, link1.m, Inerita_a,Inerita_b,vertices)))
 println(norm(g(xn1,vertices)))
 
 # test 
@@ -934,13 +950,14 @@ println(norm(g(xn1,vertices)))
 
 # simulate for 3 seconds, 
 # then visualize it using Jan's code
-Tf =3.5
+Tf =9.5
 dt = 0.005
 N = Int(Tf/dt)
 
 x0 = generate_config(mech, [0.1;0.1;1.0;0.0001], [0.001]);
 x = x0
 λ = zeros(5)
+U = 2*rand(7)
 steps = Base.OneTo(Int(N))
 storage = CD.Storage{Float64}(steps,length(mech.bodies))
 for idx = 1:N

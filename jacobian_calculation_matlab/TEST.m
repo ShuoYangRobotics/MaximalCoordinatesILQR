@@ -1,8 +1,14 @@
 syms qw qv1 qv2 qv3 real
 q = [qw;qv1;qv2;qv3]
 Lmat(q)
-H = [0 0 0;1 0 0; 0 1 0; 0 0 1]
-V = [0 0 0;1 0 0; 0 1 0; 0 0 1]'
+H = [0 0 0;
+     1 0 0; 
+     0 1 0; 
+     0 0 1]
+V = [0 0 0;
+     1 0 0; 
+     0 1 0; 
+     0 0 1]'
 syms p1 p2 p3 real
 p = [p1;p2;p3]
 % test the jacobian of translation joint q*p
