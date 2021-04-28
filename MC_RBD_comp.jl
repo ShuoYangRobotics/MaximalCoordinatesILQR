@@ -117,7 +117,7 @@ joint0 = RBD.Joint("joint0", RBD.QuaternionFloating{Float64}()) # joint connecti
 base_inertia_frame = RBD.SpatialInertia(
     RBD.frame_after(joint0), 
     com = [0.0, 0.0, 0.0], # center of mass location with respect to joint, should be all zero for the base
-    moment_about_com = model.body_mass_mtx, # inertia matirx
+    moment_about_com = model.body_inertias, # inertia matirx
     mass = model.body_mass
 )
 base = RBD.RigidBody("base", base_inertia_frame) # define body "base" using frame "base_inertia_frame"
@@ -152,7 +152,7 @@ link1_inertia_frame = RBD.SpatialInertia(
     RBD.frame_after(joint1), 
     com = [model.arm_length/2, 0, 0], # center of mass location with respect to joint
     # arm initialized at positive x direction
-    moment_about_com = model.arm_mass_mtx, # inertia matirx
+    moment_about_com = model.arm_inertias, # inertia matirx
     mass = model.arm_mass
 )
 link1 = RBD.RigidBody("link1", link1_inertia_frame)
@@ -172,7 +172,7 @@ link2_inertia_frame = RBD.SpatialInertia(
     RBD.frame_after(joint2), 
     com = [model.arm_length/2, 0, 0], # center of mass location with respect to joint
     # arm initialized at positive x direction
-    moment_about_com = model.arm_mass_mtx, # inertia matirx
+    moment_about_com = model.arm_inertias, # inertia matirx
     mass = model.arm_mass
 )
 link2 = RBD.RigidBody("link2", link2_inertia_frame)
@@ -200,9 +200,9 @@ RBD.set_velocity!(state, joint2, 0)
 RBD.set_configuration!(state, RBD.configuration(state) .+ [zeros(4);base_x0;0.;0.])
 
 controller! = function controller!(τ, t, state)
-    τ .= zeros(8)
-    τ[2] = 10.
-    τ[3] = 10.
+    τ .= 0.03*zeros(6+model.nb)
+    τ[2] = 1.
+    τ[3] = 1.
 end
 
 ts, qs, vs = RBD.simulate(state, Tf,controller!, Δt=dt)
