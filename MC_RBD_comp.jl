@@ -9,7 +9,7 @@ dt = 0.005
 N = Int(Tf/dt)
 
 """Build MC model"""
-model = FloatingSpaceOrth(3)
+model = FloatingSpaceOrth(2)
 
 """Build RBD model"""
 function generate_RBD_model(model::FloatingSpace)
@@ -73,7 +73,7 @@ function generate_RBD_model(model::FloatingSpace)
             RBD.frame_before(joint[idx]), 
             RBD.frame_after(joint[idx - 1]), # base frame
             one(RotMatrix{3}), 
-            SVector{3}([model.arm_length/2, 0., 0.]) # next joint is off by half of the arm length to positive x axis
+            SVector{3}([model.arm_length, 0., 0.]) # next joint is off by half of the arm length to positive x axis
         )
         RBD.attach!(FloatingSpaceRobot, link[idx-1], link[idx], joint[idx], joint_pose = joint_pose)
     end
