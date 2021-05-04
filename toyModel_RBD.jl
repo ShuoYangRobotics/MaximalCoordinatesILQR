@@ -46,3 +46,8 @@ using Test
 @test xnext[11:19] ≈ vs[2]
 
 
+""" Test Jacobian """
+∇f = RobotDynamics.DynamicsJacobian(RBDmodel)
+RobotDynamics.discrete_jacobian!(RK3, ∇f, RBDmodel, z)
+xlinear = (∇f.A)*state(z)*z.dt+ ∇f.B*control(z)*z.dt
+@show xlinear - xnext

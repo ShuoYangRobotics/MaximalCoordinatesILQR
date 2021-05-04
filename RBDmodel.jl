@@ -122,17 +122,17 @@ end
 
 # Specify the state and control dimensions
 function RobotDynamics.state_dim(model::FloatingSpaceRBD)
-    7 + model.nb * 2
+    7 + 6 + model.nb * 2
 end
 function RobotDynamics.control_dim(model::FloatingSpaceRBD)
     6 + model.nb
 end
 
 
-function RobotDynamics.dynamics(RBDmodel::FloatingSpaceRBD, x, u)
-    ẋ =  Array{Float64}(undef, length(x))
-    rcstate = RBD.MechanismState(RBDmodel.tree)
-    result = RBD.DynamicsResult(rcstate.mechanism)
+function RobotDynamics.dynamics(RBDmodel::FloatingSpaceRBD, x::AbstractVector{T}, u::AbstractVector{T}) where T
+    ẋ =  zeros(eltype(x),length(x))
+    rcstate = RBD.MechanismState{T}(RBDmodel.tree)
+    result = RBD.DynamicsResult{T}(rcstate.mechanism)
     dynamics!(ẋ, result, rcstate, x, u)
     ẋ
 end
