@@ -2793,7 +2793,7 @@ end
 # x is the current state, x⁺ is the next state
 # given current state x and current U
 # use newton's method to solve for the vel part of x and the next state x⁺
-function discrete_dynamics(model::FloatingSpace, x, u, λ_init, dt)
+function discrete_dynamics_MC(model::FloatingSpace, x, u, λ_init, dt)
     n,m = size(model)
     n̄ = state_diff_size(model)
     nb = model.nb
@@ -2990,7 +2990,7 @@ function RD.discrete_dynamics(::Type{Q}, model::FloatingSpace, x, u, t, dt) wher
     if (t <= 1e-7)
         model.λ_tmp .= 0
     end
-    x1, λ1 = discrete_dynamics(model,  x, u, model.λ_tmp, dt)
+    x1, λ1 = discrete_dynamics_MC(model,  x, u, model.λ_tmp, dt)
     model.λ_tmp .=λ1
     return x1
 end
@@ -3000,7 +3000,7 @@ function Altro.discrete_dynamics_MC(::Type{Q}, model::FloatingSpace, x, u, t, dt
     if (t <= 1e-7)
         model.λ_tmp .= 0
     end
-    x1, λ1 = discrete_dynamics(model,  x, u, model.λ_tmp, dt)
+    x1, λ1 = discrete_dynamics_MC(model,  x, u, model.λ_tmp, dt)
     model.λ_tmp .=λ1
     return x1,λ1
 end

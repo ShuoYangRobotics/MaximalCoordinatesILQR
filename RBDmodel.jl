@@ -129,7 +129,7 @@ function RobotDynamics.control_dim(model::FloatingSpaceRBD)
 end
 # specify the lie state
 Lie_P(model::FloatingSpaceRBD) = (0, 3 + 6 + model.nb * 2)
-RobotDynamics.LieState(model::FloatingSpaceRBD) = RobotDynamics.LieState(UnitQuaternion,Lie_P(model))
+RobotDynamics.LieState(model::FloatingSpaceRBD{T}) where T = RobotDynamics.LieState(UnitQuaternion{T},Lie_P(model))
 
 function RobotDynamics.dynamics(RBDmodel::FloatingSpaceRBD, x::AbstractVector{T}, u::AbstractVector{T}) where T
     ẋ =  zeros(eltype(x),length(x))
