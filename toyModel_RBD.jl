@@ -51,3 +51,25 @@ using Test
 RobotDynamics.discrete_jacobian!(RK3, ∇f, RBDmodel, z)
 xlinear = (∇f.A)*state(z)*z.dt+ ∇f.B*control(z)*z.dt
 @show xlinear - xnext
+
+""" Test attitude Jacbian """
+n,m = size(RBDmodel)
+n̄ = state_diff_size(RBDmodel)
+G = zeros(n,n̄ )
+RobotDynamics.state_diff_jacobian!(G, RBDmodel, z)
+G
+
+
+""" Test Altro """
+
+using Altro
+using TrajectoryOptimization
+n,m = size(RBDmodel)
+n̄ = state_diff_size(RBDmodel)
+# trajectory 
+N = 100   
+dt = 0.005                  # number of knot points
+tf = (N-1)*dt           # final time
+
+U0 = @SVector fill(0.00001, m)
+U_list = [U0 for k = 1:N-1]

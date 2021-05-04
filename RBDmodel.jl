@@ -8,7 +8,7 @@ using Rotations
 const RS = Rotations
 
 
-struct FloatingSpaceRBD{T} <: AbstractModel
+struct FloatingSpaceRBD{T} <: LieGroupModel
     body_mass::T
     body_size::T
     arm_mass::T
@@ -127,7 +127,9 @@ end
 function RobotDynamics.control_dim(model::FloatingSpaceRBD)
     6 + model.nb
 end
-
+# specify the lie state
+Lie_P(model::FloatingSpaceRBD) = (0, 3 + 6 + model.nb * 2)
+RobotDynamics.LieState(model::FloatingSpaceRBD) = RobotDynamics.LieState(UnitQuaternion,Lie_P(model))
 
 function RobotDynamics.dynamics(RBDmodel::FloatingSpaceRBD, x::AbstractVector{T}, u::AbstractVector{T}) where T
     ẋ =  zeros(eltype(x),length(x))
