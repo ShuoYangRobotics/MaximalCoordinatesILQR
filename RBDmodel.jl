@@ -128,19 +128,28 @@ function RobotDynamics.control_dim(model::FloatingSpaceRBD)
     6 + model.nb
 end
 
-# TODO: implement dynamics
+
+function RobotDynamics.dynamics(RBDmodel::FloatingSpaceRBD, x, u)
+    ẋ =  Array{Float64}(undef, length(x))
+    rcstate = RBD.MechanismState(RBDmodel.tree)
+    result = RBD.DynamicsResult(rcstate.mechanism)
+    dynamics!(ẋ, result, rcstate, x, u)
+    ẋ
+end
+
 function RobotDynamics.discrete_dynamics(RBDmodel::FloatingSpaceRBD, z::AbstractKnotPoint)
-    @show x = state(z) 
-    @show u = control(z)
+    x = state(z) 
+    u = control(z)
     t = z.t 
     dt = z.dt
-    rcstate = RBD.MechanismState(RBDmodel.tree)
-    result = DynamicsResult(rcstate.mechanism)
-    set_configuration!(rcstate, x[1:7 + RBDmodel.nb])
-    set_velocity!(rcstate, x[1:6 + RBDmodel.nb])
-    dynamics!(result, rcstate, u)
-    result
+    k1 = RobotDynamics.dynamics(RBDmodel, x, u)
+    k2 = RobotDynamics.dynamics(RBDmodel, x+dt/2*k1, u)
+    k3 = RobotDynamics.dynamics(RBDmodel, x+dt/2*k2, u)
+    k4 = RobotDynamics.dynamics(RBDmodel, x+dt*k3, u)
+    return xnext = x + dt/6.0*(k1 + 2 * k2 + 2 * k3 + k4)
 end
+
+# TODO: implement jacobian! and discrete_jacobian!
 
 # # Create the model
 # model = FloatingSpaceOrthRBD(3)

@@ -32,18 +32,17 @@ controller! = function controller!(τ, t, rcstate)
     τ[2] = U[5]
     τ[3] = U[6]
 end
-
+rcstate.q
+@show oldstate = copy(rcstate.q)
 ts, qs, vs = RBD.simulate(rcstate, Tf, controller!, Δt=dt)
+# @test rcstate.q == oldstate this shows the state is mutating
 
-qs[1]
-vs[1]
-qs[2]
-vs[2]
 """Using discrete_dynamics"""
-z = KnotPoint([qs[1];vs[1]...],U,dt)
+z = KnotPoint([qs[1];vs[1]...],[U[4:6];U[1:3];U[7:end]],dt)
+xnext = discrete_dynamics(RBDmodel, z)
 
-ret = discrete_dynamics(RBDmodel, z)
-@show ret.q̇
-@show qs[1] + ret.q̇ * dt
-@show qs[2]
-ret.v̇
+using Test
+@test xnext[1:10] ≈ qs[2]
+@test xnext[11:19] ≈ vs[2]
+
+
