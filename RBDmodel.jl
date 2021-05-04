@@ -4,6 +4,9 @@ const RBD = RigidBodyDynamics
 using Rotations
 using RobotDynamics
 using StaticArrays, LinearAlgebra
+using Rotations 
+const RS = Rotations
+
 
 struct FloatingSpaceRBD{T} <: AbstractModel
     body_mass::T
@@ -126,8 +129,17 @@ function RobotDynamics.control_dim(model::FloatingSpaceRBD)
 end
 
 # TODO: implement dynamics
-function RobotDynamics.dynamics(model::FloatingSpaceRBD, x, u)
-    1
+function RobotDynamics.discrete_dynamics(RBDmodel::FloatingSpaceRBD, z::AbstractKnotPoint)
+    @show x = state(z) 
+    @show u = control(z)
+    t = z.t 
+    dt = z.dt
+    rcstate = RBD.MechanismState(RBDmodel.tree)
+    result = DynamicsResult(rcstate.mechanism)
+    set_configuration!(rcstate, x[1:7 + RBDmodel.nb])
+    set_velocity!(rcstate, x[1:6 + RBDmodel.nb])
+    dynamics!(result, rcstate, u)
+    result
 end
 
 # # Create the model
