@@ -196,3 +196,11 @@ end
 # 	inds = inds0[con.inds] # indices of elements in new z
 # 	EFVConstraint(n, m, con.A, con.b, con.sense, inds)
 # end
+lin_upper = EFVConstraint(n,m,RBDmodel,3.0, TO.Inequality())
+function evlatz(z::AbstractVector{T}) where T
+    thetalist = z[iθ]
+    ϕlist = z[iϕ]
+    Vector(SVector(MRB.FKinSpace(RBDmodel.M, RBDmodel.Slist, thetalist)[1:3,1:3]*(MRB.JacobianBody(RBDmodel.Blist, thetalist)*ϕlist)[4:6]))
+end
+z = x0
+ForwardDiff.jacobian(evlatz, z)
