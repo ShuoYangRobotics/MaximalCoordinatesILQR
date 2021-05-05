@@ -52,6 +52,13 @@ function solve_altro_test(RBDmodel)
     vel_limit = EFVConstraint(n,m,RBDmodel,5.0, TO.Inequality())
     add_constraint!(conSet, vel_limit, 1:N)
 
+    u_max = vcat(0.0003*(@SVector ones(2)),Inf*(@SVector ones(m-2)))
+    u_min = vcat(0.0003*(@SVector ones(2)),-Inf*(@SVector ones(m-2)))
+    x_max=Inf*(@SVector ones(n))
+    x_min=-Inf*(@SVector ones(n))
+    control_bound = BoundConstraint(n, m; x_min, x_max, u_min, u_max)
+    add_constraint!(conSet, control_bound, 1:N-1)
+
     to = TimerOutput()
     # # problem
     prob = Problem(RBDmodel, obj, xf, tf, x0=x0, constraints=conSet);
