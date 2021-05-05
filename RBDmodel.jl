@@ -6,7 +6,10 @@ using RobotDynamics
 using StaticArrays, LinearAlgebra
 using Rotations 
 const RS = Rotations
-
+using TrajectoryOptimization
+const TO = TrajectoryOptimization
+using ModernRoboticsBook
+const MRB = ModernRoboticsBook
 
 struct FloatingSpaceRBD{T} <: LieGroupModel
     body_mass::T
@@ -21,6 +24,9 @@ struct FloatingSpaceRBD{T} <: LieGroupModel
     _joint_directions::Array{Array{T,1},1}
     g::T 
     nb::Integer     # number of arm links, total rigid bodies in the system will be nb+1
+    Slist::AbstractMatrix 
+    Blist::AbstractMatrix 
+    M::AbstractMatrix 
     tree::RigidBodyDynamics.Mechanism{Float64}
     function FloatingSpaceRBD{T}(nb, _joint_directions) where {T<:Real} 
         g = 0      # in space, no gravity!
@@ -98,6 +104,22 @@ struct FloatingSpaceRBD{T} <: LieGroupModel
             )
             RBD.attach!(FloatingSpaceRobot, link[idx-1], link[idx], joint[idx], joint_pose = joint_pose)
         end
+
+        Blist = [
+        MRB.ScrewToAxis([-arm_length*2.5; 0; 0], _joint_directions[1], 0)'; 
+        MRB.ScrewToAxis([-arm_length*1.5; 0; 0], _joint_directions[2], 0)'; 
+        MRB.ScrewToAxis([-arm_length*0.5; 0; 0], _joint_directions[3], 0)']'
+
+        Slist = [
+        MRB.ScrewToAxis([body_size/2; 0; 0], _joint_directions[1], 0)'; 
+        MRB.ScrewToAxis([body_size/2 + arm_length; 0; 0], _joint_directions[2], 0)'; 
+        MRB.ScrewToAxis([body_size/2 + arm_length*2; 0; 0], _joint_directions[3], 0)']'
+
+        M =[1  0  0  body_size/2 + arm_length*2.5 ;
+            0  1  0  0 ;
+            0  0  1  0 ;
+            0  0  0  1 ];
+
         new(body_mass,
             body_size,
             arm_mass,
@@ -110,6 +132,9 @@ struct FloatingSpaceRBD{T} <: LieGroupModel
             _joint_directions,
             g,
             nb,
+            Slist,
+            Blist,
+            M,
             FloatingSpaceRobot
         )    
     end   
@@ -118,6 +143,17 @@ end
 function FloatingSpaceOrthRBD(nb::Integer)
     _joint_directions = [ i % 2 == 0 ? [0.0;1.0;0.0] : [0.0;0.0;1.0] for i=1:nb]
     FloatingSpaceRBD{Float64}(nb, _joint_directions)
+end
+
+#helper function to get data from full state(7 + nb + 6 + nb)
+function state_parts(model::FloatingSpaceRBD)
+    iq = 1:4
+    ix = 5:7
+    iθ = 8:7+model.nb
+    iω = 8+model.nb:10+model.nb 
+    iv = 11+model.nb:13+model.nb 
+    iϕ = 14+model.nb:13+model.nb*2
+    return iq, ix, iθ, iω, iv, iϕ
 end
 
 # Specify the state and control dimensions
@@ -151,23 +187,3 @@ function RobotDynamics.discrete_dynamics(RBDmodel::FloatingSpaceRBD, z::Abstract
     return xnext = x + dt/6.0*(k1 + 2 * k2 + 2 * k3 + k4)
 end
 
-# TODO: implement jacobian! and discrete_jacobian!
-
-# # Create the model
-# model = FloatingSpaceOrthRBD(3)
-# n,m = size(model)
-
-# # Generate random state and control vector
-# x,u = rand(model)
-# dt = 0.01
-# z = KnotPoint(x,u,dt)
-
-# # Evaluate the continuous dynamics and Jacobian
-# ẋ = dynamics(model, x, u)
-# ∇f = RobotDynamics.DynamicsJacobian(model)   # only allocate memory
-# jacobian!(∇f, model, z)   # calls jacobian in integration.jl
-
-# # Evaluate the discrete dynamics and Jacobian
-# x′ = discrete_dynamics(RK3, model, z)
-# discrete_jacobian!(RK3, ∇f, model, z)
-# println(x′)
