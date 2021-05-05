@@ -44,7 +44,7 @@ function generate_RBD_model(model::FloatingSpace)
     link = Array{RigidBodyDynamics.RigidBody{Float64}}(UndefInitializer(), nb)
 
     # first arm linking to base
-    joint[1] = RBD.Joint(string("joint", 1), RBD.Revolute(model._joint_directions[1]))
+    joint[1] = RBD.Joint(string("joint", 1), RBD.Revolute(model.joint_directions[1]))
     inertia_frame = RBD.SpatialInertia(
         RBD.frame_after(joint[1]), 
         com = [model.arm_length/2, 0, 0], # center of mass location with respect to joint
@@ -62,7 +62,7 @@ function generate_RBD_model(model::FloatingSpace)
     RBD.attach!(FloatingSpaceRobot, base, link[1], joint[1], joint_pose = joint_pose)
 
     for idx = 2 : nb
-        joint[idx] = RBD.Joint(string("joint", idx), RBD.Revolute(model._joint_directions[idx]))
+        joint[idx] = RBD.Joint(string("joint", idx), RBD.Revolute(model.joint_directions[idx]))
         inertia_frame = RBD.SpatialInertia(
             RBD.frame_after(joint[idx]), 
             com = [model.arm_length/2, 0, 0], # center of mass location with respect to joint
@@ -108,45 +108,6 @@ function view_single_state(model::FloatingSpace, x)
 end
 
 """Initial conditions"""
-function generate_config_rc2mc(
-    model::FloatingSpace, 
-    base_translation, 
-    base_rotations,
-    base_v,
-    base_ω,
-    joint_angles)
-    pin = zeros(3) # com position of the body link 
-    """Base"""
-    pin[1] = base_translation[1]
-    pin[2] = base_translation[2]
-    pin[3] = base_translation[3]
-    prev_q = UnitQuaternion(base_rotations...)
-    state = [pin;base_v;RS.params(prev_q);base_ω]
-
-    """Arm link"""
-    pin = pin+prev_q * [model.body_size/2,0,0]
-    # find quaternion from joint angles
-    rotations = []
-    @assert length(joint_angles) == model.nb
-    for i=1:length(joint_angles)
-        axis = model.joint_directions[i]
-        push!(rotations, 
-            UnitQuaternion(AngleAxis(joint_angles[i], axis[1], axis[2], axis[3]))
-        )
-    end
-    for i = 1:length(rotations)
-        r = UnitQuaternion(rotations[i])
-        link_q = prev_q * r
-        delta = link_q * [model.arm_length/2,0,0] # assume all arms have equal length
-        link_x = pin+delta
-        state = [state; link_x;zeros(3);RS.params(link_q);zeros(3)]
-        # arm velocities can be calculated but doesn't matter for visualization
-        # TODO: calculate arm velocities
-        prev_q = link_q
-        pin += 2*delta
-    end
-    return state
-end
 base_x0 = [0., 0., 1.]
 base_q0 = RS.params(UnitQuaternion(RotZ(pi/3)))
 base_v0 = [0., 0., 0.]
@@ -172,7 +133,7 @@ x = x0
 λ = λ_init
 for idx = 1:N
     # println("step: ",idx)
-    x1, λ1 = discrete_dynamics(model,x, U, λ, dt)
+    x1, λ1 = discrete_dynamics_MC(model,x, U, λ, dt)
     # println(norm(fdyn(model,x1, x, U, λ1, dt)))
     # println(norm(g(model,x1)))
     setStates!(model,mech,x1)
