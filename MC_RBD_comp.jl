@@ -9,7 +9,7 @@ dt = 0.005
 N = Int(Tf/dt)
 
 """Build MC model"""
-ArmNumber = 6
+ArmNumber = 23
 model = FloatingSpaceOrth(ArmNumber)
 
 """Build RBD model"""
@@ -124,8 +124,8 @@ view_single_state(model, x0)
 
 """Input sequence"""
 U = 0.03*zeros(6+model.nb)
-U[5] = 1
-U[6] = 1
+U[1] = 1
+U[4] = 1
 @show U
 """MC simulation"""
 x = x0
@@ -162,8 +162,12 @@ RBD.set_configuration!(state, RBD.configuration(state) .+ [zeros(4);base_x0;zero
 
 controller! = function controller!(τ, t, state)
     τ .= 0.03*zeros(6 + model.nb)
+    τ[1] = U[4]
     τ[2] = U[5]
     τ[3] = U[6]
+    τ[4] = U[1]
+    τ[5] = U[2]
+    τ[6] = U[3]
 end
 
 ts, qs, vs = RBD.simulate(state, Tf,controller!, Δt=dt)

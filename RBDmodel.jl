@@ -43,7 +43,7 @@ struct FloatingSpaceRBD{T} <: LieGroupModel
 
         # define zero gravity world
         world = RBD.RigidBody{Float64}("world")
-        FloatingSpaceRobot = RBD.Mechanism(world; gravity=[0., 0., 0.])
+        FloatingSpaceRobot = RBD.Mechanism(world; gravity=[0., 0., g])
     
         joint0 = RBD.Joint("joint0", RBD.QuaternionFloating{Float64}()) # joint connecting base to world
         # inertia frame of base
