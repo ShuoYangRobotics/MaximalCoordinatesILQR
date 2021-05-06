@@ -105,17 +105,23 @@ struct FloatingSpaceRBD{T} <: LieGroupModel
             RBD.attach!(FloatingSpaceRobot, link[idx-1], link[idx], joint[idx], joint_pose = joint_pose)
         end
 
-        Blist = [
-        MRB.ScrewToAxis([-arm_length*2.5; 0; 0], _joint_directions[1], 0)'; 
-        MRB.ScrewToAxis([-arm_length*1.5; 0; 0], _joint_directions[2], 0)'; 
-        MRB.ScrewToAxis([-arm_length*0.5; 0; 0], _joint_directions[3], 0)']'
+        Blist = MRB.ScrewToAxis([-arm_length*(nb - 0.5); 0; 0], _joint_directions[1], 0)'
+        if nb >= 2
+            for idx = 2:nb
+                Blist = vcat(Blist, MRB.ScrewToAxis([-arm_length*(nb - idx + 0.5); 0; 0], _joint_directions[idx], 0)')
+            end
+        end
+        Blist = Blist'
+        
+        Slist = MRB.ScrewToAxis([body_size/2; 0; 0], _joint_directions[1], 0)'
+        if nb >= 2
+            for idx = 2:nb
+                Slist = vcat(Slist, MRB.ScrewToAxis([body_size/2 + arm_length*(idx-1); 0; 0], _joint_directions[idx], 0)')
+            end
+        end
+        Slist = Slist'
 
-        Slist = [
-        MRB.ScrewToAxis([body_size/2; 0; 0], _joint_directions[1], 0)'; 
-        MRB.ScrewToAxis([body_size/2 + arm_length; 0; 0], _joint_directions[2], 0)'; 
-        MRB.ScrewToAxis([body_size/2 + arm_length*2; 0; 0], _joint_directions[3], 0)']'
-
-        M =[1  0  0  body_size/2 + arm_length*2.5 ;
+        M =[1  0  0  body_size/2 + arm_length*(nb - 0.5) ;
             0  1  0  0 ;
             0  0  1  0 ;
             0  0  0  1 ];

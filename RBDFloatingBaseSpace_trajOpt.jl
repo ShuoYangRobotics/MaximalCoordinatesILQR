@@ -5,7 +5,7 @@ include("RBDmodel.jl")
 include("floatingBaseSpace.jl")
 include("RBDmodel_constraint.jl")
 
-RBDmodel = FloatingSpaceOrthRBD(3)
+RBDmodel = FloatingSpaceOrthRBD(12)
 """ Test Altro with constraint """
 
 # put solve steps in function 
@@ -57,7 +57,7 @@ function solve_altro_test(RBDmodel)
     x_max=Inf*(@SVector ones(n))
     x_min=-Inf*(@SVector ones(n))
     control_bound = BoundConstraint(n, m; x_min, x_max, u_min, u_max)
-    add_constraint!(conSet, control_bound, 1:N-1)
+    # add_constraint!(conSet, control_bound, 1:N-1)
 
     to = TimerOutput()
     # # problem
@@ -67,7 +67,7 @@ function solve_altro_test(RBDmodel)
     opts = SolverOptions(verbose=7, 
         static_bp=0, 
         square_root = true,
-        iterations=150, bp_reg=true,
+        iterations=1000, bp_reg=true,
         cost_tolerance=1e-4, constraint_tolerance=1e-4)
     altro = ALTROSolver(prob, opts)
     set_options!(altro, show_summary=true)
@@ -83,7 +83,7 @@ n,m = size(RBDmodel)
 N = 100
 X_list = states(altro)
 U_list = controls(altro)
-mc_model = FloatingSpaceOrth(3)
+mc_model = FloatingSpaceOrth(6)
 mc_n,mc_m = size(mc_model)
 mech = vis_mech_generation(mc_model)
 steps = Base.OneTo(Int(N))
