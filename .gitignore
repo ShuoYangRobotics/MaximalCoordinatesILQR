@@ -14,5 +14,5 @@
 *.blg
 *.bcf
 *.xml
-*.toml
+# *.toml
 cpp/build/

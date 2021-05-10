@@ -9,7 +9,7 @@ dt = 0.005
 N = Int(Tf/dt)
 
 """Build MC model"""
-ArmNumber = 26
+ArmNumber = 23
 model = FloatingSpaceOrth(ArmNumber)
 
 """Build RBD model"""
@@ -124,8 +124,8 @@ view_single_state(model, x0)
 
 """Input sequence"""
 U = 0.03*zeros(6+model.nb)
-U[1] = 3
-U[4] = 3
+U[1] = 1
+U[4] = 1
 @show U
 """MC simulation"""
 x = x0

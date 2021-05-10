@@ -1,11 +1,10 @@
 import Pkg; Pkg.activate(joinpath(@__DIR__)); 
 Pkg.instantiate();
 using TimerOutputs
-include("RBDmodel.jl")
+include("RBDmodel_UA.jl")
 include("floatingBaseSpace.jl")
-include("RBDmodel_constraint.jl")
 
-RBDmodel = FloatingSpaceOrthRBD(12)
+RBDmodel = FloatingSpaceOrthRBD(3)
 """ Test Altro with constraint """
 
 # put solve steps in function 
@@ -50,14 +49,7 @@ function solve_altro_test(RBDmodel)
     # Create Empty ConstraintList
     conSet = ConstraintList(n,m,N)
     vel_limit = EFVConstraint(n,m,RBDmodel,5.0, TO.Inequality())
-    add_constraint!(conSet, vel_limit, 1:N-1)
-
-    u_max = vcat(0.0003*(@SVector ones(2)),Inf*(@SVector ones(m-2)))
-    u_min = vcat(-0.0003*(@SVector ones(2)),-Inf*(@SVector ones(m-2)))
-    x_max=Inf*(@SVector ones(n))
-    x_min=-Inf*(@SVector ones(n))
-    control_bound = BoundConstraint(n, m; x_min, x_max, u_min, u_max)
-    # add_constraint!(conSet, control_bound, 1:N-1)
+    add_constraint!(conSet, vel_limit, 1:N)
 
     to = TimerOutput()
     # # problem
@@ -67,7 +59,7 @@ function solve_altro_test(RBDmodel)
     opts = SolverOptions(verbose=7, 
         static_bp=0, 
         square_root = true,
-        iterations=1000, bp_reg=true,
+        iterations=150, bp_reg=true,
         cost_tolerance=1e-4, constraint_tolerance=1e-4)
     altro = ALTROSolver(prob, opts)
     set_options!(altro, show_summary=true)
@@ -77,13 +69,12 @@ function solve_altro_test(RBDmodel)
 end
 
 
-
 altro = solve_altro_test(RBDmodel)
 n,m = size(RBDmodel)
 N = 100
 X_list = states(altro)
 U_list = controls(altro)
-mc_model = FloatingSpaceOrth(6)
+mc_model = FloatingSpaceOrth(3)
 mc_n,mc_m = size(mc_model)
 mech = vis_mech_generation(mc_model)
 steps = Base.OneTo(Int(N))

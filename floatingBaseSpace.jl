@@ -22,18 +22,18 @@ const CC = ConstrainedControl
 # the robot is body_link     =>      arm_1     ==>     arm_2    ...   ==>      arm_nb 
 # t                        joint1             joint2       ...     joint_nb
 # the arm extends along positive x direction
-struct FloatingSpace{R,T} <: LieGroupModelMC{R}
+struct FloatingSpace{R,T,n,n̄,p,nd,n̄d} <: LieGroupModelMC{R}
     body_mass::T
     body_size::T
     arm_mass::T
     arm_width::T
     arm_length::T 
-    body_mass_mtx::Array{T,2}
-    arm_mass_mtx::Array{T,2}
+    body_mass_mtx::SizedMatrix{3,3,T,2,Matrix{T}}
+    arm_mass_mtx::SizedMatrix{3,3,T,2,Matrix{T}}
     body_inertias::Diagonal{T,Array{T,1}}
     arm_inertias::Diagonal{T,Array{T,1}}
-    joint_directions::Array{Array{T,1},1}
-    joint_vertices::Array{Array{T,1},1}   # this is a term used by Jan 
+    joint_directions::Vector{SizedVector{3,T,Vector{T}}}
+    joint_vertices::Vector{SizedVector{6,T,Vector{T}}}   # this is a term used by Jan 
                                           # each joint has two vertices, so joint_vertices[i] is a 6x1 vector
     joint_cmat::Vector{SizedMatrix{2,3,T,2,Matrix{T}}}  # constraint matrix of joint
     g::T 
@@ -49,18 +49,19 @@ struct FloatingSpace{R,T} <: LieGroupModelMC{R}
     # fdyn_vec::SizedVector{n,T,Vector{T}}
     # Dfmtx::SizedMatrix{n,nd,T,2,Matrix{T}}
     # fdyn_attiG::SizedMatrix{nd,n̄d,T,2,Matrix{T}}    
-    g_val::Vector{T}
-    Dgmtx::Matrix{T}
-    attiG::Matrix{T}
-    fdyn_vec::Vector{T}
-    Dfmtx::Matrix{T}
-    fdyn_attiG::Matrix{T}
-    λ_tmp::Vector{T}
+    g_val::SizedVector{p,T,Vector{T}}
+    Dgmtx::SizedMatrix{p,n,T,2,Matrix{T}}
+    attiG::SizedMatrix{n,n̄,T,2,Matrix{T}}
+    fdyn_vec::SizedVector{n,T,Vector{T}}
+    Dfmtx::SizedMatrix{n,nd,T,2,Matrix{T}}
+    Dfmtx_error::SizedMatrix{n,n̄d,T,2,Matrix{T}}
+    fdyn_attiG::SizedMatrix{nd,n̄d,T,2,Matrix{T}}   
+    λ_tmp::SizedVector{p,T,Vector{T}}
     liestate::RD.LieState
 
     ## some small but used repeatedly memories
-    vmat::Matrix{T}
-    hmat::Matrix{T}
+    vmat::SizedMatrix{3,4,T,2,Matrix{T}}
+    hmat::SizedMatrix{4,3,T,2,Matrix{T}}
 
     # we know these matrices size exactly
     dldq::SArray{Tuple{16,4},T,2,64}
@@ -69,69 +70,81 @@ struct FloatingSpace{R,T} <: LieGroupModelMC{R}
     drTdq::SArray{Tuple{16,4},T,2,64}
 
     #kron matrix used in the vec trick for calculation of drerivatives
-    kron3_mtx::Matrix{T}    # must be 4x12
-    kron4_mtx::Matrix{T}    # must be 4x16
+    kron3_mtx::SizedMatrix{4,12,T,2,Matrix{T}}    # must be 4x12
+    kron4_mtx::SizedMatrix{4,16,T,2,Matrix{T}}   # must be 4x16
 
-    lmat::Matrix{T}
-    rmat::Matrix{T}
-    mat24::Matrix{T}
-    mat33::Matrix{T}
-    mat44::Matrix{T}
-    mat442::Matrix{T}
-    mat43::Matrix{T}
-    mat432::Matrix{T}
-    mat34::Matrix{T}
-    mat342::Matrix{T}
-    mat35::Matrix{T}
-    mat53::Matrix{T}
-    mat54::Matrix{T}
-    mat542::Matrix{T}
-    vec2::Vector{T}
-    vec3::Vector{T}
-    vec4::Vector{T}
-    vec5::Vector{T}
+    lmat::SizedMatrix{4,4,T,2,Matrix{T}}
+    rmat::SizedMatrix{4,4,T,2,Matrix{T}}
+    mat23::SizedMatrix{2,3,T,2,Matrix{T}}
+    mat24::SizedMatrix{2,4,T,2,Matrix{T}}
+    mat33::SizedMatrix{3,3,T,2,Matrix{T}}
+    mat44::SizedMatrix{4,4,T,2,Matrix{T}}
+    mat442::SizedMatrix{4,4,T,2,Matrix{T}}
+    mat43::SizedMatrix{4,3,T,2,Matrix{T}}
+    mat432::SizedMatrix{4,3,T,2,Matrix{T}}
+    mat34::SizedMatrix{3,4,T,2,Matrix{T}}
+    mat342::SizedMatrix{3,4,T,2,Matrix{T}}
+    mat35::SizedMatrix{3,5,T,2,Matrix{T}}
+    mat53::SizedMatrix{5,3,T,2,Matrix{T}}
+    mat54::SizedMatrix{5,4,T,2,Matrix{T}}
+    mat542::SizedMatrix{5,4,T,2,Matrix{T}}
+    vec2::SizedVector{2,T,Vector{T}}
+    vec3::SizedVector{3,T,Vector{T}}
+    vec4::SizedVector{4,T,Vector{T}}
+    vec5::SizedVector{5,T,Vector{T}}
 
-    r_ainds::Vector{Int}
-    v_ainds::Vector{Int}
-    q_ainds::Vector{Int}
-    w_ainds::Vector{Int}
-    r_binds::Vector{Int}
-    v_binds::Vector{Int}
-    q_binds::Vector{Int}
-    w_binds::Vector{Int}
-    r_zinds::Vector{Int}
-    v_zinds::Vector{Int}
-    q_zinds::Vector{Int}
-    w_zinds::Vector{Int}
+    r_ainds::SizedVector{3,Int,Vector{Int}}
+    v_ainds::SizedVector{3,Int,Vector{Int}}
+    q_ainds::SizedVector{4,Int,Vector{Int}}
+    w_ainds::SizedVector{3,Int,Vector{Int}}
+    r_binds::SizedVector{3,Int,Vector{Int}}
+    v_binds::SizedVector{3,Int,Vector{Int}}
+    q_binds::SizedVector{4,Int,Vector{Int}}
+    w_binds::SizedVector{3,Int,Vector{Int}}
+    r_zinds::SizedVector{3,Int,Vector{Int}}
+    v_zinds::SizedVector{3,Int,Vector{Int}}
+    q_zinds::SizedVector{4,Int,Vector{Int}}
+    w_zinds::SizedVector{3,Int,Vector{Int}}
 
-    rat1::Vector{T}
-    vat1::Vector{T}
-    qat1::Vector{T}
-    wat1::Vector{T}
+    rat1::SizedVector{3,T,Vector{T}}
+    vat1::SizedVector{3,T,Vector{T}}
+    qat1::SizedVector{4,T,Vector{T}}
+    wat1::SizedVector{3,T,Vector{T}}
 
-    rat::Vector{T}
-    vat::Vector{T}
-    qat::Vector{T}
-    wat::Vector{T}
-    rbt::Vector{T}
-    vbt::Vector{T}
-    qbt::Vector{T}
-    wbt::Vector{T}
-    rbt1::Vector{T}
-    vbt1::Vector{T}
-    qbt1::Vector{T}
-    wbt1::Vector{T}
-    rzt1::Vector{T}
-    vzt1::Vector{T}
-    qzt1::Vector{T}
-    wzt1::Vector{T}
-    Gqamtx::Matrix{T}
-    Gqbmtx::Matrix{T}
-    Gqzmtx::Matrix{T}
-    dGqaTλdqa::Matrix{T}
-    dGqaTλdqb::Matrix{T}
-    dGqbTλdqa::Matrix{T}
-    dGqbTλdqb::Matrix{T}
+    rat::SizedVector{3,T,Vector{T}}
+    vat::SizedVector{3,T,Vector{T}}
+    qat::SizedVector{4,T,Vector{T}}
+    wat::SizedVector{3,T,Vector{T}}
+    rbt::SizedVector{3,T,Vector{T}}
+    vbt::SizedVector{3,T,Vector{T}}
+    qbt::SizedVector{4,T,Vector{T}}
+    wbt::SizedVector{3,T,Vector{T}}
+    rbt1::SizedVector{3,T,Vector{T}}
+    vbt1::SizedVector{3,T,Vector{T}}
+    qbt1::SizedVector{4,T,Vector{T}}
+    wbt1::SizedVector{3,T,Vector{T}}
+    rzt1::SizedVector{3,T,Vector{T}}
+    vzt1::SizedVector{3,T,Vector{T}}
+    qzt1::SizedVector{4,T,Vector{T}}
+    wzt1::SizedVector{3,T,Vector{T}}
+    Gqamtx::SizedMatrix{5,3,T,2,Matrix{T}}
+    Gqbmtx::SizedMatrix{5,3,T,2,Matrix{T}}
+    Gqzmtx::SizedMatrix{5,3,T,2,Matrix{T}}
+    dGqaTλdqa::SizedMatrix{3,4,T,2,Matrix{T}}
+    dGqaTλdqb::SizedMatrix{3,4,T,2,Matrix{T}}
+    dGqbTλdqa::SizedMatrix{3,4,T,2,Matrix{T}}
+    dGqbTλdqb::SizedMatrix{3,4,T,2,Matrix{T}}
+
+    ## variables used in discrete_dynamics (MC)
+
+    err_vec::Vector{T} 
+    G::SizedMatrix{p,n̄,T,2,Matrix{T}}
+    Fdyn::SizedMatrix{n,n̄d,T,2,Matrix{T}}
+    F::SparseMatrixCSC{T,Int}      
+    Δx⁺::Vector{T} 
+    Δs::Vector{T}       
+    FΔs::Vector{T}    
+
 
     function FloatingSpace{R,T}(nb,_joint_directions) where {R<:Rotation, T<:Real}
         # problem size
@@ -168,22 +181,23 @@ struct FloatingSpace{R,T} <: LieGroupModelMC{R}
             end
         end
 
-        g_val = zeros(T,np)
-        Dgmtx = zeros(np,n)
-        attiG = zeros(T,n,n̄)
-        fdyn_vec = zeros(T,n)
-        Dfmtx = zeros(n,nd)
-        fdyn_attiG = zeros(T,nd,n̄d)
+        g_val = SizedVector{np}(zeros(T,np))
+        Dgmtx = SizedMatrix{np,n}(zeros(T,np,n))
+        attiG = SizedMatrix{n,n̄}(zeros(T,n,n̄))
+        fdyn_vec = SizedVector{n}(zeros(T,n))
+        Dfmtx = SizedMatrix{n,nd}(zeros(n,nd))
+        Dfmtx_error = SizedMatrix{n,n̄d}(zeros(n,n̄d))
+        fdyn_attiG = SizedMatrix{nd,n̄d}(zeros(T,nd,n̄d))
         body_mass_mtx = diagm([m0,m0,m0])
         arm_mass_mtx = diagm([m1,m1,m1])
-        λ_tmp = zeros(T,np)
+        λ_tmp = SizedVector{np}(zeros(T,np))
         liestate = RD.LieState(R, (6,fill(9, nb)..., 3))
 
-        vmat = zeros(T,3,4)
+        vmat = SizedMatrix{3,4}(zeros(T,3,4))
         vmat[1,2] = 1.0
         vmat[2,3] = 1.0
         vmat[3,4] = 1.0
-        hmat = zeros(T,4,3)
+        hmat = SizedMatrix{4,3}(zeros(T,4,3))
         hmat[2,1] = 1.0
         hmat[3,2] = 1.0
         hmat[4,3] = 1.0
@@ -273,72 +287,81 @@ struct FloatingSpace{R,T} <: LieGroupModelMC{R}
                 1 0 0 0
             ]
 
-        kron3_mtx = zeros(T,4,12)
-        kron4_mtx = zeros(T,4,16)
+        kron3_mtx = SizedMatrix{4,12}(zeros(T,4,12))
+        kron4_mtx = SizedMatrix{4,16}(zeros(T,4,16))
 
-        lmat = zeros(T,4,4)
-        rmat = zeros(T,4,4)
-        mat24 = zeros(T,2,4)
-        mat33 = zeros(T,3,3)
-        mat44 = zeros(T,4,4)
-        mat442 = zeros(T,4,4)
-        mat43 = zeros(T,4,3)
-        mat432 = zeros(T,4,3)
-        mat34 = zeros(T,3,4)
-        mat342 = zeros(T,3,4)
-        mat35 = zeros(T,3,5)
-        mat53 = zeros(T,5,3)
-        mat54 = zeros(T,5,4)
-        mat542 = zeros(T,5,4)
-        vec2 = zeros(T,2)
-        vec3 = zeros(T,3)
-        vec4 = zeros(T,4)
-        vec5 = zeros(T,5)
+        lmat = SizedMatrix{4,4}(zeros(T,4,4))
+        rmat = SizedMatrix{4,4}(zeros(T,4,4))
+        mat23 = SizedMatrix{2,3}(zeros(T,2,3))
+        mat24 = SizedMatrix{2,4}(zeros(T,2,4))
+        mat33 = SizedMatrix{3,3}(zeros(T,3,3))
+        mat44 = SizedMatrix{4,4}(zeros(T,4,4))
+        mat442 = SizedMatrix{4,4}(zeros(T,4,4))
+        mat43 = SizedMatrix{4,3}(zeros(T,4,3))
+        mat432 = SizedMatrix{4,3}(zeros(T,4,3))
+        mat34 = SizedMatrix{3,4}(zeros(T,3,4))
+        mat342 = SizedMatrix{3,4}(zeros(T,3,4))
+        mat35 = SizedMatrix{3,5}(zeros(T,3,5))
+        mat53 = SizedMatrix{5,3}(zeros(T,5,3))
+        mat54 = SizedMatrix{5,4}(zeros(T,5,4))
+        mat542 = SizedMatrix{5,4}(zeros(T,5,4))
+        vec2 = SizedVector{2}(zeros(T,2))
+        vec3 = SizedVector{3}(SizedVector{3}(zeros(T,3)))
+        vec4 = SizedVector{4}(zeros(T,4))
+        vec5 = SizedVector{5}(zeros(T,5))
 
-        r_ainds = zeros(Int,3)
-        v_ainds = zeros(Int,3)
-        q_ainds = zeros(Int,4)
-        w_ainds = zeros(Int,3)
-        r_binds = zeros(Int,3)
-        v_binds = zeros(Int,3)
-        q_binds = zeros(Int,4)
-        w_binds = zeros(Int,3)
-        r_zinds = zeros(Int,3)
-        v_zinds = zeros(Int,3)
-        q_zinds = zeros(Int,4)
-        w_zinds = zeros(Int,3)
+        r_ainds = SizedVector{3}(zeros(Int,3))
+        v_ainds = SizedVector{3}(zeros(Int,3))
+        q_ainds = SizedVector{4}(zeros(Int,4))
+        w_ainds = SizedVector{3}(zeros(Int,3))
+        r_binds = SizedVector{3}(zeros(Int,3))
+        v_binds = SizedVector{3}(zeros(Int,3))
+        q_binds = SizedVector{4}(zeros(Int,4))
+        w_binds = SizedVector{3}(zeros(Int,3))
+        r_zinds = SizedVector{3}(zeros(Int,3))
+        v_zinds = SizedVector{3}(zeros(Int,3))
+        q_zinds = SizedVector{4}(zeros(Int,4))
+        w_zinds = SizedVector{3}(zeros(Int,3))
     
-        rat1 = zeros(T,3)
-        vat1 = zeros(T,3)
-        qat1 = zeros(T,4)
-        wat1 = zeros(T,3)
+        rat1 = SizedVector{3}(zeros(T,3))
+        vat1 = SizedVector{3}(zeros(T,3))
+        qat1 = SizedVector{4}(zeros(T,4))
+        wat1 = SizedVector{3}(zeros(T,3))
     
-        rat = zeros(T,3)
-        vat = zeros(T,3)
-        qat = zeros(T,4)
-        wat = zeros(T,3)
-        rbt = zeros(T,3)
-        vbt = zeros(T,3)
-        qbt = zeros(T,4)
-        wbt = zeros(T,3)
-        rbt1 = zeros(T,3)
-        vbt1 = zeros(T,3)
-        qbt1 = zeros(T,4)
-        wbt1 = zeros(T,3)
-        rzt1 = zeros(T,3)
-        vzt1 = zeros(T,3)
-        qzt1 = zeros(T,4)
-        wzt1 = zeros(T,3)
-        Gqamtx = zeros(T,5,3)
-        Gqbmtx = zeros(T,5,3)
-        Gqzmtx = zeros(T,5,3)
-        dGqaTλdqa = zeros(T,3,4)
-        dGqaTλdqb = zeros(T,3,4)
-        dGqbTλdqa = zeros(T,3,4)
-        dGqbTλdqb = zeros(T,3,4)
+        rat = SizedVector{3}(zeros(T,3))
+        vat = SizedVector{3}(zeros(T,3))
+        qat = SizedVector{4}(zeros(T,4))
+        wat = SizedVector{3}(zeros(T,3))
+        rbt = SizedVector{3}(zeros(T,3))
+        vbt = SizedVector{3}(zeros(T,3))
+        qbt = SizedVector{4}(zeros(T,4))
+        wbt = SizedVector{3}(zeros(T,3))
+        rbt1 = SizedVector{3}(zeros(T,3))
+        vbt1 = SizedVector{3}(zeros(T,3))
+        qbt1 = SizedVector{4}(zeros(T,4))
+        wbt1 = SizedVector{3}(zeros(T,3))
+        rzt1 = SizedVector{3}(zeros(T,3))
+        vzt1 = SizedVector{3}(zeros(T,3))
+        qzt1 = SizedVector{4}(zeros(T,4))
+        wzt1 = SizedVector{3}(zeros(T,3))
+        Gqamtx = SizedMatrix{5,3}(zeros(T,5,3))
+        Gqbmtx = SizedMatrix{5,3}(zeros(T,5,3))
+        Gqzmtx = SizedMatrix{5,3}(zeros(T,5,3))
+        dGqaTλdqa = SizedMatrix{3,4}(zeros(T,3,4))
+        dGqaTλdqb = SizedMatrix{3,4}(zeros(T,3,4))
+        dGqbTλdqa = SizedMatrix{3,4}(zeros(T,3,4))
+        dGqbTλdqb = SizedMatrix{3,4}(zeros(T,3,4))
 
 
-        new{R,T}(m0, body_size, m1, 0.1, arm_length, 
+        err_vec = zeros(ns+np)
+        G = SizedMatrix{np,n̄}(zeros(T,np,n̄))
+        Fdyn = SizedMatrix{n,n̄d}(zeros(T,n,n̄d))
+        F = spzeros(n+np,n̄+np)       
+        Δx⁺ = zeros(n̄)
+        Δs = zeros(n̄+np)        
+        FΔs = zeros(n+np)  
+
+        new{R,T,n,n̄,np,nd,n̄d}(m0, body_size, m1, 0.1, arm_length, 
             body_mass_mtx, arm_mass_mtx,
             Diagonal(1 / 12 * m0 * diagm([0.5^2 + 0.5^2;0.5^2 + 0.5^2;0.5^2 + 0.5^2])),  # body inertia
             Diagonal(1 / 12 * m1 * diagm([0.1^2 + 0.1^2;0.1^2 + 1.0^2;1.0^2 + 0.1^2])),   # arm inertia
@@ -353,6 +376,7 @@ struct FloatingSpace{R,T} <: LieGroupModelMC{R}
             attiG,
             fdyn_vec,
             Dfmtx,
+            Dfmtx_error,
             fdyn_attiG,
             λ_tmp,
             liestate,
@@ -366,6 +390,7 @@ struct FloatingSpace{R,T} <: LieGroupModelMC{R}
             kron4_mtx,
             lmat,
             rmat,
+            mat23,
             mat24,
             mat33,
             mat44,
@@ -422,7 +447,16 @@ struct FloatingSpace{R,T} <: LieGroupModelMC{R}
             dGqaTλdqa,
             dGqaTλdqb,
             dGqbTλdqa,
-            dGqbTλdqb
+            dGqbTλdqb,
+
+
+            err_vec,
+            G,
+            Fdyn,
+            F,      
+            Δx⁺,
+            Δs,        
+            FΔs 
         )
     end
     function FloatingSpace()
@@ -487,12 +521,6 @@ function statez_inds!(model::FloatingSpace, i)
     model.q_zinds .= 13*(i-1); model.q_zinds[1] += 7; model.q_zinds[2] += 8; model.q_zinds[3] += 9; model.q_zinds[4] += 10;  
     model.w_zinds .= 13*(i-1); model.w_zinds[1] += 11; model.w_zinds[2] += 12; model.w_zinds[3] += 13; 
 end
-# begin
-#     # basic construct test
-#     a = FloatingSpace()
-#     @test Altro.config_size(a) == 14
-#     println(Lie_P(a))
-# end
 
 # state config x v q w 
 # the body pose is the position and z orientation of the body link, then rotations are rotation matrices of joint angles
@@ -660,24 +688,6 @@ function q_rmult_T!(model::FloatingSpace, q::AbstractVector{T}) where T
     model.rmat[4,1] = -q[4]; model.rmat[4,2] = -q[3]; model.rmat[4,3] =  q[2]; model.rmat[4,4] =  q[1];   
 end
 
-# test rotations
-# begin
-#     q = UnitQuaternion(SVector{4}([1;2;3;4.0]),false)
-#     q_rmult!(model,RS.params(q))
-#     qq = RS.rmult(q)
-#     @test qq ≈ model.rmat
-#     q_lmult!(model,RS.params(q))
-#     qq = RS.lmult(q)
-#     @test qq ≈ model.lmat
-
-#     q_rmult_T!(model,RS.params(q))
-#     qq = RS.rmult(q)'
-#     @test qq ≈ model.rmat
-#     q_lmult_T!(model,RS.params(q))
-#     qq = RS.lmult(q)'
-#     @test qq ≈ model.lmat
-# end
-
 # the position constraint g
 function g(model::FloatingSpace, x)
     # we have nb joints, so the dimension of constraint is p=5*nb
@@ -716,8 +726,9 @@ end
 function g!(model::FloatingSpace, x)
     # we have nb joints, so the dimension of constraint is p=5*nb
     # g_val = zeros(eltype(x),model.p)
-    prev = 0
-    for i=2:model.nb+1   # i is the rigidbody index
+    n::Int = model.nb+1
+    prev::Int = 0
+    for i=2:n   # i is the rigidbody index
         prev = 5*(i-2)
         # r_ainds, v_ainds, q_ainds, w_ainds = fullargsinds(model, i-1) # a is the previous rigid body
         statea_inds!(model,i-1)
@@ -742,7 +753,11 @@ function g!(model::FloatingSpace, x)
         model.qbt[3] = x[model.q_binds[3]]
         model.qbt[4] = x[model.q_binds[4]]
      
-        mul!(model.vec4, model.hmat, model.joint_vertices[i-1][4:6])  # model.hmat*model.joint_vertices[i-1][4:6]
+        model.vec3[1] = model.joint_vertices[i-1][4]
+        model.vec3[2] = model.joint_vertices[i-1][5]
+        model.vec3[3] = model.joint_vertices[i-1][6]
+
+        mul!(model.vec4, model.hmat, model.vec3)  # model.hmat*model.joint_vertices[i-1][4:6]
         q_rmult_T!(model, model.qbt)                                  # RS.rmult(q_b)'
         q_lmult!(model, model.qbt)                                    # RS.lmult(q_b)
         mul!(model.mat44, model.rmat, model.lmat)                     # RS.rmult(q_a)'*RS.lmult(q_b)
@@ -758,7 +773,10 @@ function g!(model::FloatingSpace, x)
         model.g_val[prev+2] = model.g_val[prev+2] + model.vec3[2]
         model.g_val[prev+3] = model.g_val[prev+3] + model.vec3[3]
 
-        mul!(model.vec4, model.hmat, model.joint_vertices[i-1][1:3])  # model.hmat*model.joint_vertices[i-1][1:3]
+        model.vec3[1] = model.joint_vertices[i-1][1]
+        model.vec3[2] = model.joint_vertices[i-1][2]
+        model.vec3[3] = model.joint_vertices[i-1][3]
+        mul!(model.vec4, model.hmat, model.vec3)  # model.hmat*model.joint_vertices[i-1][1:3]
         q_lmult!(model, model.qat)                                    # RS.lmult(q_a)
         q_rmult_T!(model, model.qat)                                  # RS.rmult(q_a)'
         mul!(model.mat44, model.rmat, model.lmat)                     # RS.rmult(q_a)'*RS.lmult(q_a)
@@ -779,7 +797,8 @@ function g!(model::FloatingSpace, x)
         q_lmult_T!(model, model.qat) 
         mul!(model.mat34, model.vmat, model.lmat)                    # model.vmat*RS.lmult(q_a)'
         mul!(model.vec3, model.mat34, model.qbt)                     # model.vmat*RS.lmult(q_a)'*model.qbt
-        mul!(model.vec2, model.joint_cmat[i-1], model.vec3)          # model.joint_cmat[i-1]*tmp  
+        model.mat23 .= model.joint_cmat[i-1]
+        mul!(model.vec2, model.mat23, model.vec3)          # model.joint_cmat[i-1]*tmp  
         model.g_val[prev+4] = model.vec2[1]
         model.g_val[prev+5] = model.vec2[2]
         # tmp = model.vmat*RS.lmult(q_a)'*model.qbt
@@ -825,8 +844,9 @@ end
 
 function Dg!(model::FloatingSpace, x)
     # Dgmtx = spzeros(model.p,model.ns)
-    prev = 0
-    for i=2:model.nb+1   # i is the rigidbody index
+    n::Int=model.nb+1
+    prev::Int = 0
+    for i=2:n   # i is the rigidbody index
         prev = 5*(i-2)
         # r_ainds, v_ainds, q_ainds, w_ainds = fullargsinds(model, i-1) # a is the previous rigid body
         # r_binds, v_binds, q_binds, w_binds = fullargsinds(model, i)   # b is the next rigid body
@@ -858,39 +878,45 @@ function Dg!(model::FloatingSpace, x)
         model.Dgmtx[prev.+(4:5),model.r_binds] .= 0
 
 
-        mul!(model.vec4, model.hmat, model.joint_vertices[i-1][1:3])  # model.hmat*model.joint_vertices[i-1][1:3]
+        model.vec3[1] = model.joint_vertices[i-1][1]
+        model.vec3[2] = model.joint_vertices[i-1][2]
+        model.vec3[3] = model.joint_vertices[i-1][3]
+        mul!(model.vec4, model.hmat, model.vec3)  # model.hmat*model.joint_vertices[i-1][1:3]
         q_rmult!(model, model.vec4)                                   # RS.rmult(model.hmat*model.joint_vertices[i-1][1:3])
         model.mat44 .= model.rmat
         q_rmult_T!(model, model.qat)                                  # RS.rmult(model.qat)'
         mul!(model.mat34, model.vmat, model.rmat)                     # model.vmat*RS.rmult(model.qat)'
         mul!(model.mat342, model.mat34, model.mat44)          # model.vmat*RS.rmult(model.qat)'*RS.rmult(model.hmat*model.joint_vertices[i-1][1:3])
 
-        model.Dgmtx[prev.+(1:3),model.q_ainds] = model.mat342
-        model.Dgmtx[prev.+(1:3),model.q_ainds] .*= -2.0
+        model.mat342 .*= -2.0
+        model.Dgmtx[prev.+(1:3),model.q_ainds] .= model.mat342
 
         q_lmult_T!(model, model.qbt) 
         mul!(model.mat34, model.vmat, model.lmat)                    # model.vmat*RS.lmult(q_b)'
         mul!(model.mat24, model.joint_cmat[i-1], model.mat34) 
-        model.Dgmtx[prev.+(4:5),model.q_ainds] .= -model.mat24
+        model.mat24 .*= -1.0
+        model.Dgmtx[prev.+(4:5),model.q_ainds] .= model.mat24
         # model.Dgmtx[(5*(i-2)).+(1:5),model.q_ainds] = [-2*model.vmat*RS.rmult(model.qbt)'*RS.rmult(model.hmat*model.joint_vertices[i-1][1:3]);
         #                         -model.joint_cmat[i-1]*model.vmat*RS.lmult(q_b)'
         #                        ]
 
-
-        mul!(model.vec4, model.hmat, model.joint_vertices[i-1][4:6])  # model.hmat*model.joint_vertices[i-1][4:6]
+        model.vec3[1] = model.joint_vertices[i-1][4]
+        model.vec3[2] = model.joint_vertices[i-1][5]
+        model.vec3[3] = model.joint_vertices[i-1][6]
+        mul!(model.vec4, model.hmat, model.vec3)  # model.hmat*model.joint_vertices[i-1][4:6]
         q_rmult!(model, model.vec4)                                   # RS.rmult(model.hmat*model.joint_vertices[i-1][4:6])
         model.mat44 .= model.rmat
         q_rmult_T!(model, model.qbt)                                  # RS.rmult(model.qbt)'
         mul!(model.mat34, model.vmat, model.rmat)                     # model.vmat*RS.rmult(model.qbt)'
         mul!(model.mat342, model.mat34, model.mat44)          #  2*model.vmat*RS.rmult(model.qbt)'*RS.rmult(model.hmat*model.joint_vertices[i-1][1:3])
 
-        model.Dgmtx[prev.+(1:3),model.q_binds] = model.mat342
-        model.Dgmtx[prev.+(1:3),model.q_binds] .*= 2.0
+        model.mat342 .*= 2.0
+        model.Dgmtx[prev.+(1:3),model.q_binds] .= model.mat342
 
         q_lmult_T!(model, model.qat) 
         mul!(model.mat34, model.vmat, model.lmat)                    # model.vmat*RS.lmult(q_b)'
         mul!(model.mat24, model.joint_cmat[i-1], model.mat34) 
-        model.Dgmtx[prev.+(4:5),model.q_binds] = model.mat24
+        model.Dgmtx[prev.+(4:5),model.q_binds] .= model.mat24
         # model.Dgmtx[(5*(i-2)).+(1:5),model.q_binds] = [2*model.vmat*RS.rmult(q_b)'*RS.rmult(model.hmat*model.joint_vertices[i-1][4:6]);
         #                                                model.joint_cmat[i-1]*model.vmat*RS.lmult(model.qat)'
         #                                               ]
@@ -917,38 +943,47 @@ end
 
 # inplace version
 function Gqa!(model, mtx, q_a,q_b,vertices,cmat) 
-    mul!(model.vec4, model.hmat, vertices[1:3])  # model.hmat*model.joint_vertices[i-1][1:3]
+    
+    model.vec3[1] = vertices[1]
+    model.vec3[2] = vertices[2]
+    model.vec3[3] = vertices[3]
+    mul!(model.vec4, model.hmat, model.vec3)  # model.hmat*model.joint_vertices[i-1][1:3]
     q_rmult!(model, model.vec4)                                   # RS.rmult(model.hmat*model.joint_vertices[i-1][1:3])
     model.mat44 .= model.rmat
     q_rmult_T!(model, q_a)                                  # RS.rmult(model.qat)'
     mul!(model.mat34, model.vmat, model.rmat)                     # model.vmat*RS.rmult(model.qat)'
     mul!(model.mat342, model.mat34, model.mat44)          # model.vmat*RS.rmult(model.qat)'*RS.rmult(model.hmat*model.joint_vertices[i-1][1:3])
-
+    
+    model.mat342 .*= -2.0
     model.mat54[1:3,:] .= model.mat342
-    model.mat54[1:3,:] .*= -2.0
 
     q_lmult_T!(model, q_b) 
     mul!(model.mat34, model.vmat, model.lmat)                    # model.vmat*RS.lmult(q_b)'
-    mul!(model.mat24, cmat, model.mat34) 
-    model.mat54[4:5,:] .= -model.mat24
+    mul!(model.mat24, cmat, model.mat34)
+    model.mat24 .*= -1.0 
+    model.mat54[4:5,:] .= model.mat24
 
     q_lmult!(model, q_a)
     mul!(model.mat43, model.lmat, model.hmat)
 
     mul!(mtx, model.mat54, model.mat43)
+    return 
 end
 
 # this calculates a part of Dg*attiG, only related to G_qb, dim is 5x3
 function Gqb!(model, mtx, q_a, q_b,vertices,cmat) 
-    mul!(model.vec4, model.hmat, vertices[4:6])  # model.hmat*model.joint_vertices[i-1][4:6]
+    model.vec3[1] = vertices[4]
+    model.vec3[2] = vertices[5]
+    model.vec3[3] = vertices[6]
+    mul!(model.vec4, model.hmat, model.vec3)  # model.hmat*model.joint_vertices[i-1][4:6]
     q_rmult!(model, model.vec4)                                   # RS.rmult(model.hmat*model.joint_vertices[i-1][4:6])
     model.mat44 .= model.rmat
-    q_rmult_T!(model, q_b)                                  # RS.rmult(model.qbt)'
-    mul!(model.mat34, model.vmat, model.rmat)                     # model.vmat*RS.rmult(model.qbt)'
-    mul!(model.mat342, model.mat34, model.mat44)          #  2*model.vmat*RS.rmult(model.qbt)'*RS.rmult(model.hmat*model.joint_vertices[i-1][1:3])
+    q_rmult_T!(model, q_b)                                  #  RS.rmult(model.qbt)'
+    mul!(model.mat34, model.vmat, model.rmat)               #  model.vmat*RS.rmult(model.qbt)'
+    mul!(model.mat342, model.mat34, model.mat44)            #  2*model.vmat*RS.rmult(model.qbt)'*RS.rmult(model.hmat*model.joint_vertices[i-1][1:3])
 
+    model.mat342 .*= 2.0
     model.mat54[1:3,:] .= model.mat342
-    model.mat54[1:3,:]  .*= 2.0
 
     q_lmult_T!(model, q_a) 
     mul!(model.mat34, model.vmat, model.lmat)                    # model.vmat*RS.lmult(q_b)'
@@ -959,6 +994,7 @@ function Gqb!(model, mtx, q_a, q_b,vertices,cmat)
     q_lmult!(model, q_b)
     mul!(model.mat43, model.lmat, model.hmat)
     mul!(mtx, model.mat54, model.mat43)
+    return
 end
 
 
@@ -1007,8 +1043,9 @@ function gp1(model::FloatingSpace, x, dt)
 end
 
 function gp1!(model::FloatingSpace, x, dt)
-    prev = 0
-    for i=2:model.nb+1   # i is the rigidbody index
+    n::Int=model.nb+1
+    prev::Int = 0
+    for i=2:n   # i is the rigidbody index
         prev = 5*(i-2)
         # r_ainds, v_ainds, q_ainds, w_ainds = fullargsinds(model, i-1) # a is the previous rigid body
         statea_inds!(model,i-1)
@@ -1063,19 +1100,22 @@ function gp1!(model::FloatingSpace, x, dt)
     
         q_lmult!(model, model.qat)
         model.vec4[1] = sqrt(4/dt^2 -model.wat'*model.wat)
-        model.vec4[2:4] = model.wat
+        model.vec4[2:4] .= model.wat
         mul!(model.qat1, model.lmat, model.vec4)
         model.qat1 .*= dt/2
         # model.qat1 .= dt/2*model.lmat*[sqrt(4/dt^2 -model.wat'*model.wat);model.wat]
         q_lmult!(model, model.qbt)
         model.vec4[1] = sqrt(4/dt^2 -model.wbt'*model.wbt)
-        model.vec4[2:4] = model.wbt
+        model.vec4[2:4] .= model.wbt
         mul!(model.qbt1, model.lmat, model.vec4)
         model.qbt1 .*= dt/2
         # model.qbt1 .= dt/2*model.lmat*[sqrt(4/dt^2 -model.wbt'*model.wbt);model.wbt]
 
         # impose constraint on r_a1, r_b1, q_a1, q_b1
-        mul!(model.vec4, model.hmat, model.joint_vertices[i-1][4:6])  # model.hmat*model.joint_vertices[i-1][4:6]
+        model.vec3[1] = model.joint_vertices[i-1][4]
+        model.vec3[2] = model.joint_vertices[i-1][5]
+        model.vec3[3] = model.joint_vertices[i-1][6]
+        mul!(model.vec4, model.hmat, model.vec3)  # model.hmat*model.joint_vertices[i-1][4:6]
         q_rmult_T!(model, model.qbt1)                                  # RS.rmult(q_b)'
         q_lmult!(model, model.qbt1)                                    # RS.lmult(q_b)
         mul!(model.mat44, model.rmat, model.lmat)                     # RS.rmult(q_a)'*RS.lmult(q_b)
@@ -1091,7 +1131,10 @@ function gp1!(model::FloatingSpace, x, dt)
         model.g_val[prev+2] = model.g_val[prev+2] + model.vec3[2]
         model.g_val[prev+3] = model.g_val[prev+3] + model.vec3[3]
 
-        mul!(model.vec4, model.hmat, model.joint_vertices[i-1][1:3])  # model.hmat*model.joint_vertices[i-1][1:3]
+        model.vec3[1] = model.joint_vertices[i-1][1]
+        model.vec3[2] = model.joint_vertices[i-1][2]
+        model.vec3[3] = model.joint_vertices[i-1][3]
+        mul!(model.vec4, model.hmat, model.vec3) # model.hmat*model.joint_vertices[i-1][1:3]
         q_lmult!(model, model.qat1)                                    # RS.lmult(q_a)
         q_rmult_T!(model, model.qat1)                                  # RS.rmult(q_a)'
         mul!(model.mat44, model.rmat, model.lmat)                     # RS.rmult(q_a)'*RS.lmult(q_a)
@@ -1187,8 +1230,9 @@ function Dgp1(model::FloatingSpace, x, dt)
 end
 
 function Dgp1!(model::FloatingSpace, x, dt)
-    prev = 0
-    for i=2:model.nb+1   # i is the rigidbody index
+    n::Int=model.nb+1
+    prev::Int = 0
+    for i=2:n   # i is the rigidbody index
         prev = 5*(i-2)
         # r_ainds, v_ainds, q_ainds, w_ainds = fullargsinds(model, i-1) # a is the previous rigid body
         statea_inds!(model,i-1)
@@ -1243,13 +1287,13 @@ function Dgp1!(model::FloatingSpace, x, dt)
     
         q_lmult!(model, model.qat)
         model.vec4[1] = sqrt(4/dt^2 -model.wat'*model.wat)
-        model.vec4[2:4] = model.wat
+        model.vec4[2:4] .= model.wat
         mul!(model.qat1, model.lmat, model.vec4)
         model.qat1 .*= dt/2
         # model.qat1 .= dt/2*model.lmat*[sqrt(4/dt^2 -model.wat'*model.wat);model.wat]
         q_lmult!(model, model.qbt)
         model.vec4[1] = sqrt(4/dt^2 -model.wbt'*model.wbt)
-        model.vec4[2:4] = model.wbt
+        model.vec4[2:4] .= model.wbt
         mul!(model.qbt1, model.lmat, model.vec4)
         model.qbt1 .*= dt/2
         # model.qbt1 .= dt/2*model.lmat*[sqrt(4/dt^2 -model.wbt'*model.wbt);model.wbt]
@@ -1278,23 +1322,27 @@ function Dgp1!(model::FloatingSpace, x, dt)
         # ∂dgp1∂dqa1 = [-2*model.vmat*RS.rmult(q_a1)'*RS.rmult(model.hmat*model.joint_vertices[i-1][1:3]);
         #               -model.joint_cmat[i-1]*model.vmat*RS.lmult(q_b)'
         #             ]
-        mul!(model.vec4, model.hmat, model.joint_vertices[i-1][1:3])  # model.hmat*model.joint_vertices[i-1][1:3]
+        model.vec3[1] = model.joint_vertices[i-1][1]
+        model.vec3[2] = model.joint_vertices[i-1][2]
+        model.vec3[3] = model.joint_vertices[i-1][3]
+        mul!(model.vec4, model.hmat, model.vec3)  # model.hmat*model.joint_vertices[i-1][1:3]
         q_rmult!(model, model.vec4)                                   # RS.rmult(model.hmat*model.joint_vertices[i-1][1:3])
         model.mat44 .= model.rmat
         q_rmult_T!(model, model.qat1)                                  # RS.rmult(model.qat1)'
         mul!(model.mat34, model.vmat, model.rmat)                     # model.vmat*RS.rmult(model.qat)'
         mul!(model.mat342, model.mat34, model.mat44)          # model.vmat*RS.rmult(model.qat)'*RS.rmult(model.hmat*model.joint_vertices[i-1][1:3])
-    
+        
+        model.mat342 .*= -2.0
         model.mat54[1:3,:] = model.mat342
-        model.mat54[1:3,:] .*= -2.0
     
         q_lmult_T!(model, model.qbt) 
         mul!(model.mat34, model.vmat, model.lmat)                    # model.vmat*RS.lmult(q_b)'
         mul!(model.mat24, model.joint_cmat[i-1], model.mat34) 
-        model.mat54[4:5,:] .= -model.mat24
+        model.mat24 .*= -1.0
+        model.mat54[4:5,:] .= model.mat24
         # ∂dqa1∂dqa = dt/2*RS.rmult(SVector{4}([sqrt(4/dt^2 -model.wat'*model.wat);model.wat]))  
         model.vec4[1] = sqrt(4/dt^2 -model.wat'*model.wat)
-        model.vec4[2:4] = model.wat
+        model.vec4[2:4] .= model.wat
         q_rmult!(model, model.vec4)
         model.mat44 .= model.rmat
         model.mat44 .*= dt/2
@@ -1315,24 +1363,27 @@ function Dgp1!(model::FloatingSpace, x, dt)
         # ∂dgp1∂dqb1 =[2*model.vmat*RS.rmult(q_b1)'*RS.rmult(model.hmat*model.joint_vertices[i-1][4:6]);
         #                 model.joint_cmat[i-1]*model.vmat*RS.lmult(q_a)'
         #             ]
-        mul!(model.vec4, model.hmat, model.joint_vertices[i-1][4:6])  # model.hmat*model.joint_vertices[i-1][4:6]
+        model.vec3[1] = model.joint_vertices[i-1][4]
+        model.vec3[2] = model.joint_vertices[i-1][5]
+        model.vec3[3] = model.joint_vertices[i-1][6]
+        mul!(model.vec4, model.hmat, model.vec3)  # model.hmat*model.joint_vertices[i-1][4:6]
         q_rmult!(model, model.vec4)                                   # RS.rmult(model.hmat*model.joint_vertices[i-1][4:6])
         model.mat44 .= model.rmat
         q_rmult_T!(model, model.qbt1)                                  # RS.rmult(model.qbt)'
         mul!(model.mat34, model.vmat, model.rmat)                     # model.vmat*RS.rmult(model.qbt)'
         mul!(model.mat342, model.mat34, model.mat44)          #  2*model.vmat*RS.rmult(model.qbt)'*RS.rmult(model.hmat*model.joint_vertices[i-1][1:3])
     
+        model.mat342 .*= 2.0
         model.mat54[1:3,:] = model.mat342
-        model.mat54[1:3,:]  .*= 2.0    
         q_lmult_T!(model, model.qat) 
         mul!(model.mat34, model.vmat, model.lmat)                    # model.vmat*RS.lmult(q_b)'
         mul!(model.mat24, model.joint_cmat[i-1], model.mat34) 
-        model.mat54[4:5,:]  = model.mat24
+        model.mat54[4:5,:] .= model.mat24
 
 
         # ∂dqb1∂dqb = dt/2*RS.rmult(SVector{4}([sqrt(4/dt^2 -w_b'*w_b);w_b]))      
         model.vec4[1] = sqrt(4/dt^2 -model.wbt'*model.wbt)
-        model.vec4[2:4] = model.wbt
+        model.vec4[2:4] .= model.wbt
         q_rmult!(model, model.vec4)
         model.mat44 .= model.rmat
         model.mat44 .*= dt/2
@@ -1351,57 +1402,13 @@ function Dgp1!(model::FloatingSpace, x, dt)
     return
 end
 
-# test: constraint g
-# begin
-#     model = FloatingSpace(16)
-#     x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], fill.(pi/4,model.nb))
-#     @time gval = g(model,x0)
-#     # println(gval)
-#     @time g!(model,x0)
-#     # println(model.g_val)
-#     @test gval ≈ model.g_val atol=1e-9
-
-#     @time Dgmtx = Dg(model,x0)
-#     @time Dg!(model,x0)
-#     # println(model.Dgmtx)
-#     # println(Dgmtx)
-#     @test Dgmtx ≈ model.Dgmtx atol=1e-9
-
-#     # # TODO, test gp1 and Dgp1
-#     @time gval = gp1(model,x0,0.01)
-#     # println(gval)
-#     @time gp1!(model,x0,0.01)
-#     @test gval ≈ model.g_val  atol=1e-9
-    
-#     @time Dp1gmtx = Dgp1(model,x0,0.01)
-#     @time Dgp1!(model,x0,0.01)
-#     @test Dp1gmtx ≈ model.Dgmtx  atol=1e-9
-#     # # println(Dgmtx)
-#     # gp1aug(z) = gp1(model,z,0.01)
-#     # Dgp1forward = ForwardDiff.jacobian(gp1aug,x0)
-#     # @test Dgp1forward ≈ Dp1gmtx
-
-#     # q_a = UnitQuaternion(RotX(0.03))
-#     # q_b = UnitQuaternion(RotY(0.03))
-#     # vertices = [1,2,3,4,5,6]
-#     # joint_direction = [0,0,1]
-#     # cmat = [0 1 0.0;
-#     #         1 0 0]
-#     # @time Ga = Gqa(RS.params(q_a),RS.params(q_b),vertices, joint_direction,cmat) 
-#     # @time Gqa!(model, model.Gqamtx, RS.params(q_a),RS.params(q_b),vertices, joint_direction,cmat) 
-#     # @test Ga ≈ model.Gqamtx atol=1e-9
-#     # @time Gb = Gqb(RS.params(q_a),RS.params(q_b),vertices, joint_direction,cmat) 
-#     # @time Gqb!(model, model.Gqbmtx, RS.params(q_a),RS.params(q_b),vertices, joint_direction,cmat) 
-#     # @test Gb ≈ model.Gqbmtx atol=1e-9
-# end
-
 function state_diff_jac(model::FloatingSpace,x::AbstractArray{T}) where T
     n,m = size(model)
     n̄ = state_diff_size(model)
 
     G = SizedMatrix{n,n̄}(zeros(T,n,n̄))
     RD.state_diff_jacobian!(G, RD.LieState(UnitQuaternion{T}, Lie_P(model)) , SVector{n}(x))
-    
+
     return G
 end
 
@@ -1412,19 +1419,6 @@ function state_diff_jac!(model::FloatingSpace,x::AbstractArray{T}) where T
     return
 end
 
-# test state_diff_jac
-# begin
-#     model = FloatingSpace()
-#     n,m = size(model)
-#     n̄ = state_diff_size(model)
-#     @show n
-#     @show n̄
-
-#     x0 = generate_config(model, [2.0;2.0;1.0;pi/2], [pi/2]);
-#     @time attG = state_diff_jac(model, x0)
-#     @time state_diff_jac!(model,x0)
-#     @test attG ≈ model.attiG atol=1e-9
-# end
 
 # implicity dynamics function fdyn
 # return f(x_t1, x_t, u_t, λt) = 0
@@ -1909,7 +1903,7 @@ function kron4!(model::FloatingSpace, x::AbstractVector{T}) where T
 end
 
 # the jacobian of Gqaᵀλ wrt to qa
-function ∂Gqaᵀλ∂qa(q_a::SArray{Tuple{4},T,1,4},q_b::SArray{Tuple{4},T,1,4},λt,vertices, joint_direction,cmat)    where T 
+function ∂Gqaᵀλ∂qa(model::FloatingSpace, q_a::SArray{Tuple{4},T,1,4},q_b::SArray{Tuple{4},T,1,4},λt,vertices, joint_direction,cmat)    where T 
     vertex1 = SVector{4}(float([0.0;vertices[1:3]]))                      # pa
 
     a = -2*model.vmat*kron((RS.rmult(vertex1)'*RS.rmult(q_a)*model.hmat*λt[1:3])',I(4))*∂Lᵀ∂q()
@@ -1931,8 +1925,11 @@ function ∂Gqaᵀλ∂qa!(model::FloatingSpace, mtx, q_a::AbstractVector{T}, q_
     q_rmult!(model, q_a)                        # RS.rmult(q_a)
     mul!(model.mat43, model.rmat, model.hmat)   # RS.rmult(q_a)*model.hmat
     mul!(model.mat432, model.mat44, model.mat43)   # RS.rmult(vertex1)'*RS.rmult(q_a)*model.hmat
-     
-    mul!(model.vec4, model.mat432, λt[1:3])   # RS.rmult(vertex1)'*RS.rmult(q_a)*model.hmat*λt[1:3]
+    
+    model.vec3[1] = λt[1]
+    model.vec3[2] = λt[2]
+    model.vec3[3] = λt[3]
+    mul!(model.vec4, model.mat432, model.vec3)   # RS.rmult(vertex1)'*RS.rmult(q_a)*model.hmat*λt[1:3]
     kron4!(model, model.vec4)                       # kron((RS.rmult(vertex1)'*RS.rmult(q_a)*model.hmat*λt[1:3])',I(4))
     mul!(model.mat44, model.kron4_mtx, model.dlTdq)  # kron((RS.rmult(vertex1)'*RS.rmult(q_a)*model.hmat*λt[1:3])',I(4))*∂Lᵀ∂q()
 
@@ -1942,7 +1939,10 @@ function ∂Gqaᵀλ∂qa!(model::FloatingSpace, mtx, q_a::AbstractVector{T}, q_
 
     # b = -2*model.vmat*RS.lmult(q_a)'*RS.rmult(vertex1)'*kron((model.hmat*λt[1:3])',I(4))*∂R∂q()
     # model.rmat still keeps RS.rmult(vertex1)'
-    mul!(model.vec4, model.hmat, λt[1:3]) # model.hmat*λt[1:3]
+    model.vec3[1] = λt[1]
+    model.vec3[2] = λt[2]
+    model.vec3[3] = λt[3]
+    mul!(model.vec4, model.hmat, model.vec3) # model.hmat*λt[1:3]
     kron4!(model, model.vec4)                       # kron((model.hmat*λt[1:3])',I(4))
     mul!(model.mat44, model.kron4_mtx, model.drdq)  # kron((model.hmat*λt[1:3])',I(4))*∂R∂q()
     q_lmult_T!(model, q_a)                          # RS.lmult(q_a)'
@@ -1960,7 +1960,10 @@ function ∂Gqaᵀλ∂qa!(model::FloatingSpace, mtx, q_a::AbstractVector{T}, q_
     #c = -model.vmat*kron((RS.lmult(q_b)*model.hmat*cmat'*λt[4:5])',I(4))*∂Lᵀ∂q()
     q_lmult!(model, q_b)                          # RS.lmult(q_b)
     mul!(model.mat43, model.lmat, model.hmat)     # RS.lmult(q_b)*model.hmat
-    mul!(model.vec3, Transpose(cmat),λt[4:5])     # cmat'*λt[4:5]
+    
+    model.vec2[1] = λt[4]
+    model.vec2[2] = λt[5]
+    mul!(model.vec3, Transpose(cmat), model.vec2)     # cmat'*λt[4:5]
     mul!(model.vec4, model.mat43, model.vec3)     # RS.lmult(q_b)*model.hmat*cmat'*λt[4:5]
     kron4!(model, model.vec4)                       # kron((RS.lmult(q_b)*model.hmat*cmat'*λt[4:5])',I(4))
     mul!(model.mat44, model.kron4_mtx, model.dlTdq)  #kron((RS.lmult(q_b)*model.hmat*cmat'*λt[4:5])',I(4))*∂Lᵀ∂q()
@@ -1970,14 +1973,17 @@ function ∂Gqaᵀλ∂qa!(model::FloatingSpace, mtx, q_a::AbstractVector{T}, q_
     return 
 end
 # the jacobian of Gqaᵀλ wrt to qb
-function ∂Gqaᵀλ∂qb(q_a::SArray{Tuple{4},T,1,4},q_b::SArray{Tuple{4},T,1,4},λt,vertices, joint_direction, cmat)    where T
+function ∂Gqaᵀλ∂qb(model::FloatingSpace, q_a::SArray{Tuple{4},T,1,4},q_b::SArray{Tuple{4},T,1,4},λt,vertices, joint_direction, cmat)    where T
   
     return -model.vmat*RS.lmult(q_a)'*kron((model.hmat*cmat'*λt[4:5])',I(4))*∂L∂q()
 end
 # (inplace version) the jacobian of Gqaᵀλ wrt to qb
 function ∂Gqaᵀλ∂qb!(model::FloatingSpace, mtx, q_a::AbstractVector{T}, q_b::AbstractVector{T}, λt::AbstractVector{T}, vertices,cmat) where T
     # -model.vmat*RS.lmult(q_a)'*kron((model.hmat*cmat'*λt[4:5])',I(4))*∂L∂q()
-    mul!(model.vec3, Transpose(cmat),λt[4:5])        # cmat'*λt[4:5]
+    
+    model.vec2[1] = λt[4]
+    model.vec2[2] = λt[5]
+    mul!(model.vec3, Transpose(cmat), model.vec2)        # cmat'*λt[4:5]
     mul!(model.vec4, model.hmat, model.vec3)         # model.hmat*cmat'*λt[4:5]
     kron4!(model, model.vec4)                        # kron((model.hmat*cmat'*λt[4:5])',I(4))
     mul!(model.mat44, model.kron4_mtx, model.dldq)   # kron((model.hmat*cmat'*λt[4:5])',I(4))*∂L∂q()
@@ -1986,17 +1992,21 @@ function ∂Gqaᵀλ∂qb!(model::FloatingSpace, mtx, q_a::AbstractVector{T}, q_
     mul!(model.mat34, model.vmat, model.mat442)      # RS.lmult(q_a)'*kron((model.hmat*cmat'*λt[4:5])',I(4))*∂L∂q()
     model.mat34 .*= -1.0
     mtx .= model.mat34
+    return 
 end
 
 # the jacobian of Gqbᵀλ wrt to qa
-function ∂Gqbᵀλ∂qa(q_a::SArray{Tuple{4},T,1,4},q_b::SArray{Tuple{4},T,1,4},λt,vertices, joint_direction, cmat)    where T
+function ∂Gqbᵀλ∂qa(model::FloatingSpace, q_a::SArray{Tuple{4},T,1,4},q_b::SArray{Tuple{4},T,1,4},λt,vertices, joint_direction, cmat)    where T
 
     return model.vmat*RS.lmult(q_b)'*kron((model.hmat*cmat'*λt[4:5])',I(4))*∂L∂q()
 end
 # (inplace version) the jacobian of Gqbᵀλ wrt to qa
 function ∂Gqbᵀλ∂qa!(model::FloatingSpace, mtx, q_a::AbstractVector{T}, q_b::AbstractVector{T}, λt::AbstractVector{T}, vertices,cmat) where T
     # model.vmat*RS.lmult(q_b)'*kron((model.hmat*cmat'*λt[4:5])',I(4))*∂L∂q()
-    mul!(model.vec3, Transpose(cmat),λt[4:5])        # cmat'*λt[4:5]
+    
+    model.vec2[1] = λt[4]
+    model.vec2[2] = λt[5]
+    mul!(model.vec3, Transpose(cmat), model.vec2)        # cmat'*λt[4:5]
     mul!(model.vec4, model.hmat, model.vec3)         # model.hmat*cmat'*λt[4:5]
     kron4!(model, model.vec4)                        # kron((model.hmat*cmat'*λt[4:5])',I(4))
     mul!(model.mat44, model.kron4_mtx, model.dldq)   # kron((model.hmat*cmat'*λt[4:5])',I(4))*∂L∂q()
@@ -2004,10 +2014,11 @@ function ∂Gqbᵀλ∂qa!(model::FloatingSpace, mtx, q_a::AbstractVector{T}, q_
     mul!(model.mat442, model.lmat, model.mat44)      # RS.lmult(q_b)'*kron((model.hmat*cmat'*λt[4:5])',I(4))*∂L∂q()
     mul!(model.mat34, model.vmat, model.mat442)      # RS.lmult(q_b)'*kron((model.hmat*cmat'*λt[4:5])',I(4))*∂L∂q()
     mtx .= model.mat34
+    return 
 end
 
 # the jacobian of Gqbᵀλ wrt to qb
-function ∂Gqbᵀλ∂qb(q_a::SArray{Tuple{4},T,1,4},q_b::SArray{Tuple{4},T,1,4},λt,vertices, joint_direction,cmat)   where T
+function ∂Gqbᵀλ∂qb(model::FloatingSpace, q_a::SArray{Tuple{4},T,1,4},q_b::SArray{Tuple{4},T,1,4},λt,vertices, joint_direction,cmat)   where T
     vertex2 = SVector{4}(float([0.0;vertices[4:6]]))                      # pb
 
     a = 2*model.vmat*kron((RS.rmult(vertex2)'*RS.rmult(q_b)*model.hmat*λt[1:3])',I(4))*∂Lᵀ∂q()
@@ -2029,7 +2040,10 @@ function ∂Gqbᵀλ∂qb!(model::FloatingSpace, mtx, q_a::AbstractVector{T}, q_
     mul!(model.mat43, model.rmat, model.hmat)   # RS.rmult(q_b)*model.hmat
     mul!(model.mat432, model.mat44, model.mat43)   # RS.rmult(vertex2)'*RS.rmult(q_b)*model.hmat
      
-    mul!(model.vec4, model.mat432, λt[1:3])   # RS.rmult(vertex2)'*RS.rmult(q_b)*model.hmat*λt[1:3]
+    model.vec3[1] = λt[1]
+    model.vec3[2] = λt[2]
+    model.vec3[3] = λt[3]
+    mul!(model.vec4, model.mat432, model.vec3)   # RS.rmult(vertex2)'*RS.rmult(q_b)*model.hmat*λt[1:3]
     kron4!(model, model.vec4)                       # kron((RS.rmult(vertex2)'*RS.rmult(q_b)*model.hmat*λt[1:3])',I(4))
     mul!(model.mat44, model.kron4_mtx, model.dlTdq)  # kron((RS.rmult(vertex2)'*RS.rmult(q_b)*model.hmat*λt[1:3])',I(4))*∂Lᵀ∂q()
 
@@ -2038,7 +2052,11 @@ function ∂Gqbᵀλ∂qb!(model::FloatingSpace, mtx, q_a::AbstractVector{T}, q_
     mtx .*= 2.0
 
     # b = 2*model.vmat*RS.lmult(q_b)'*RS.rmult(vertex2)'*kron((model.hmat*λt[1:3])',I(4))*∂R∂q()
-    mul!(model.vec4, model.hmat, λt[1:3])           # model.hmat*λt[1:3]
+    
+    model.vec3[1] = λt[1]
+    model.vec3[2] = λt[2]
+    model.vec3[3] = λt[3]
+    mul!(model.vec4, model.hmat, model.vec3)           # model.hmat*λt[1:3]
     kron4!(model, model.vec4)                       # kron((model.hmat*λt[1:3])',I(4))
     mul!(model.mat44, model.kron4_mtx, model.drdq)  # kron((model.hmat*λt[1:3])',I(4))*∂R∂q()
     q_lmult_T!(model, q_b)                          # RS.lmult(q_b)'
@@ -2056,44 +2074,17 @@ function ∂Gqbᵀλ∂qb!(model::FloatingSpace, mtx, q_a::AbstractVector{T}, q_
     #c = model.vmat*kron((RS.lmult(q_a)*model.hmat*cmat'*λt[4:5])',I(4))*∂Lᵀ∂q()
     q_lmult!(model, q_a)                          # RS.lmult(q_a)
     mul!(model.mat43, model.lmat, model.hmat)     # RS.lmult(q_a)*model.hmat
-    mul!(model.vec3, Transpose(cmat),λt[4:5])     # cmat'*λt[4:5]
+    
+    model.vec2[1] = λt[4]
+    model.vec2[2] = λt[5]
+    mul!(model.vec3, Transpose(cmat), model.vec2)     # cmat'*λt[4:5]
     mul!(model.vec4, model.mat43, model.vec3)     # RS.lmult(q_a)*model.hmat*cmat'*λt[4:5]
     kron4!(model, model.vec4)                       # kron((RS.lmult(q_a)*model.hmat*cmat'*λt[4:5])',I(4))
     mul!(model.mat44, model.kron4_mtx, model.dlTdq)  #kron((RS.lmult(q_a)*model.hmat*cmat'*λt[4:5])',I(4))*∂Lᵀ∂q()
     mul!(model.mat34, model.vmat, model.mat44)       #model.vmat*kron((RS.lmult(q_a)*model.hmat*cmat'*λt[4:5])',I(4))*∂Lᵀ∂q()
     mtx .+= model.mat34
+    return 
 end
-
-# test inplace derivatives
-# begin
-#     model = FloatingSpace(4)
-#     q_a = UnitQuaternion(RotX(0.03))
-#     q_b = UnitQuaternion(RotY(0.03))
-#     vertices = [1,2,3,4,5,6]
-#     joint_direction = [0,0,1]
-#     cmat = [0 1 0.0;
-#             1 0 0]
-#     @time Ga = Gqa(RS.params(q_a),RS.params(q_b),vertices, joint_direction,cmat) 
-#     @time Gqa!(model, model.Gqamtx, RS.params(q_a),RS.params(q_b),vertices,cmat) 
-#     @test Ga ≈ model.Gqamtx atol=1e-9
-#     @time Gb = Gqb(RS.params(q_a),RS.params(q_b),vertices, joint_direction,cmat) 
-#     @time Gqb!(model, model.Gqbmtx, RS.params(q_a),RS.params(q_b),vertices,cmat) 
-#     @test Gb ≈ model.Gqbmtx atol=1e-9
-
-#     λt = [1;2;3;4;5.0]
-#     @time kk = ∂Gqaᵀλ∂qa(RS.params(q_a),RS.params(q_b),λt,vertices, joint_direction,cmat)
-#     @time ∂Gqaᵀλ∂qa!(model, model.dGqaTλdqa, RS.params(q_a),RS.params(q_b), λt, vertices,cmat) 
-#     @test kk ≈ model.dGqaTλdqa atol=1e-9
-#     @time kk = ∂Gqbᵀλ∂qb(RS.params(q_a),RS.params(q_b),λt,vertices, joint_direction,cmat)
-#     @time ∂Gqbᵀλ∂qb!(model, model.dGqbTλdqb, RS.params(q_a),RS.params(q_b), λt, vertices,cmat) 
-#     @test kk ≈ model.dGqbTλdqb atol=1e-9
-#     @time kk = ∂Gqbᵀλ∂qa(RS.params(q_a),RS.params(q_b),λt,vertices, joint_direction,cmat)
-#     @time ∂Gqbᵀλ∂qa!(model, model.dGqbTλdqa, RS.params(q_a),RS.params(q_b), λt, vertices,cmat) 
-#     @test kk ≈ model.dGqbTλdqa atol=1e-9
-#     @time kk = ∂Gqaᵀλ∂qb(RS.params(q_a),RS.params(q_b),λt,vertices, joint_direction,cmat)
-#     @time ∂Gqaᵀλ∂qb!(model, model.dGqaTλdqb, RS.params(q_a),RS.params(q_b), λt, vertices,cmat) 
-#     @test kk ≈ model.dGqaTλdqb atol=1e-9
-# end
 
 # The jacobian of function Dfdyn
 # most complicated function!
@@ -2161,8 +2152,8 @@ function Dfdyn(model::FloatingSpace,xt1, xt, ut, λt, dt)
             vertices = model.joint_vertices[joint_after_id] # notice joint_vertices is 6x1
             joint_direction = convert(Array{Float64,1},model.joint_directions[joint_after_id])
             Gqamtx = Gqa(qat1,qbt1,vertices, joint_direction,model.joint_cmat[joint_after_id])
-            ∂Gqaᵀλ∂qa1_mtx = ∂Gqaᵀλ∂qa(qat1,qbt1,λt_block,vertices, joint_direction,model.joint_cmat[joint_after_id])
-            ∂Gqaᵀλ∂qb1_mtx = ∂Gqaᵀλ∂qb(qat1,qbt1,λt_block,vertices, joint_direction,model.joint_cmat[joint_after_id])
+            ∂Gqaᵀλ∂qa1_mtx = ∂Gqaᵀλ∂qa(model, qat1,qbt1,λt_block,vertices, joint_direction,model.joint_cmat[joint_after_id])
+            ∂Gqaᵀλ∂qb1_mtx = ∂Gqaᵀλ∂qb(model, qat1,qbt1,λt_block,vertices, joint_direction,model.joint_cmat[joint_after_id])
 
             # d (Ja * wat1 * sqrt(4/Δt^2 -wat1'*wat1) + wat1 × (Ja * wat1)) / d wat1, following are matlab code 
             Ja = model.body_inertias
@@ -2209,14 +2200,14 @@ function Dfdyn(model::FloatingSpace,xt1, xt, ut, λt, dt)
             next_vertices = model.joint_vertices[joint_after_id] # notice joint_vertices is 6x1
             next_joint_direction = convert(Array{Float64,1},model.joint_directions[joint_after_id])
             Gqamtx = Gqa(qat1,qbt1,next_vertices, next_joint_direction,model.joint_cmat[joint_after_id])  
-            ∂Gqaᵀλ∂qa1_mtx = ∂Gqaᵀλ∂qa(qat1,qbt1,next_λt_block,next_vertices, next_joint_direction,model.joint_cmat[joint_after_id])
-            ∂Gqaᵀλ∂qb1_mtx = ∂Gqaᵀλ∂qb(qat1,qbt1,next_λt_block,next_vertices, next_joint_direction,model.joint_cmat[joint_after_id])
+            ∂Gqaᵀλ∂qa1_mtx = ∂Gqaᵀλ∂qa(model,qat1,qbt1,next_λt_block,next_vertices, next_joint_direction,model.joint_cmat[joint_after_id])
+            ∂Gqaᵀλ∂qb1_mtx = ∂Gqaᵀλ∂qb(model,qat1,qbt1,next_λt_block,next_vertices, next_joint_direction,model.joint_cmat[joint_after_id])
             # joint between z and a  # use Grb
             prev_vertices = model.joint_vertices[joint_before_id] # notice joint_vertices is 6x1
             prev_joint_direction = convert(Array{Float64,1},model.joint_directions[joint_before_id])
             Gqbmtx = Gqb(qzt1,qat1,prev_vertices, prev_joint_direction,model.joint_cmat[joint_before_id])  
-            ∂Gqbᵀλ∂qz1_mtx = ∂Gqbᵀλ∂qa(qzt1,qat1,prev_λt_block,prev_vertices, prev_joint_direction,model.joint_cmat[joint_before_id])
-            ∂Gqbᵀλ∂qa1_mtx = ∂Gqbᵀλ∂qb(qzt1,qat1,prev_λt_block,prev_vertices, prev_joint_direction,model.joint_cmat[joint_before_id])
+            ∂Gqbᵀλ∂qz1_mtx = ∂Gqbᵀλ∂qa(model,qzt1,qat1,prev_λt_block,prev_vertices, prev_joint_direction,model.joint_cmat[joint_before_id])
+            ∂Gqbᵀλ∂qa1_mtx = ∂Gqbᵀλ∂qb(model,qzt1,qat1,prev_λt_block,prev_vertices, prev_joint_direction,model.joint_cmat[joint_before_id])
 
             # derivative of eqn 1, position
             Dfmtx_block[1:3, r_ainds] .= I(3)                 # 3x3   d[rat1 - (rat + vat*dt)]/d rat1
@@ -2278,8 +2269,8 @@ function Dfdyn(model::FloatingSpace,xt1, xt, ut, λt, dt)
             prev_vertices = model.joint_vertices[joint_before_id] # notice joint_vertices is 6x1
             prev_joint_direction = convert(Array{Float64,1},model.joint_directions[joint_before_id])
             Gqbmtx = Gqb(qzt1,qat1,prev_vertices, prev_joint_direction, model.joint_cmat[joint_before_id]) 
-            ∂Gqbᵀλ∂qz1_mtx = ∂Gqbᵀλ∂qa(qzt1,qat1,prev_λt_block,prev_vertices, prev_joint_direction, model.joint_cmat[joint_before_id])
-            ∂Gqbᵀλ∂qa1_mtx = ∂Gqbᵀλ∂qb(qzt1,qat1,prev_λt_block,prev_vertices, prev_joint_direction, model.joint_cmat[joint_before_id])
+            ∂Gqbᵀλ∂qz1_mtx = ∂Gqbᵀλ∂qa(model,qzt1,qat1,prev_λt_block,prev_vertices, prev_joint_direction, model.joint_cmat[joint_before_id])
+            ∂Gqbᵀλ∂qa1_mtx = ∂Gqbᵀλ∂qb(model,qzt1,qat1,prev_λt_block,prev_vertices, prev_joint_direction, model.joint_cmat[joint_before_id])
 
             # derivative of eqn 1, position
             Dfmtx_block[1:3, r_ainds] = I(3)                 # 3x3   d[rat1 - (rat + vat*dt)]/d rat1
@@ -2331,24 +2322,24 @@ end
 
 # most complicated function!, save the jacobian in model.Dfmtx
 function Dfdyn!(model::FloatingSpace,xt1, xt, ut, λt, dt)
-    nb = model.nb
-    ns = model.ns   # ns = 13*(nb+1)
-    nr = 13         #size of one rigidbody
-    nc = 5          #size of one joint constraint 
-    nu = 6+nb       # size of all control ut
+    nb::Int = model.nb
+    ns::Int = model.ns   # ns = 13*(nb+1)
+    nr::Int = 13         #size of one rigidbody
+    nc::Int = 5          #size of one joint constraint 
+    nu::Int = 6+nb       # size of all control ut
     # this function will have a lot of confusing index gymnastics
-    nd = ns*2 + nu + nc*(nb)
+    nd::Int = ns*2 + nu + nc*(nb)
     # Dfmtx = spzeros(model.ns, nd)   # [xt1;xt;ut;λt]
-    Gqamtx = zeros(5,3)  # common storage
-    Gqbmtx = zeros(5,3)  # common storage
 
-
-    J11 = 0.0;J12 = 0.0;J13 = 0.0;
-    J21 = 0.0;J22 = 0.0;J23 = 0.0;
-    J31 = 0.0;J32 = 0.;J33 = 0.0;
-    w1 = 0.0; w2 = 0.0; w3 = 0.0;
-    wk = 0.0;
-    for link_id=1:model.nb+1
+    J11::Float64 = 0.0;J12::Float64 = 0.0;J13::Float64 = 0.0;
+    J21::Float64 = 0.0;J22::Float64 = 0.0;J23::Float64 = 0.0;
+    J31::Float64 = 0.0;J32::Float64 = 0.;J33::Float64 = 0.0;
+    w1::Float64 = 0.0; w2::Float64 = 0.0; w3::Float64 = 0.0;
+    wk::Float64 = 0.0;
+    n::Int = model.nb+1
+    joint_before_id::Int = 0
+    joint_after_id::Int  = 0
+    for link_id=1:n
         # @time begin
         Dfmtx_block = view(model.Dfmtx, (nr*(link_id-1)).+(1:nr),:) #13 x nd
         joint_before_id = link_id-1
@@ -2473,7 +2464,7 @@ function Dfdyn!(model::FloatingSpace,xt1, xt, ut, λt, dt)
             Dfmtx_block[11:13, (ns*2).+(6+joint_after_id)] .=  2*model.joint_directions[joint_after_id]
             Dfmtx_block[11:13, (ns*2 + nu + 5*(joint_after_id-1)).+(1:5)] .= -model.Gqamtx' 
 
-        elseif (link_id >= 2 && link_id < model.nb+1) # normal arm link
+        elseif (link_id >= 2 && link_id < n) # normal arm link
             # Ma = diagm([model.arm_mass,model.arm_mass,model.arm_mass])
             # get next link state from xt1
             # r_binds, v_binds, q_binds, w_binds = fullargsinds(model, link_id+1) # b is the next link
@@ -2528,7 +2519,11 @@ function Dfdyn!(model::FloatingSpace,xt1, xt, ut, λt, dt)
 
             # derivative of eqn 3, velocity 
             Dfmtx_block[4:6, model.v_ainds] .= model.arm_mass_mtx                   # 3x3
-            Dfmtx_block[4:6, (ns .+model.v_ainds)] .= -model.arm_mass_mtx              # 3x3
+            
+            model.mat33 .= model.arm_mass_mtx 
+            model.mat33 .*= -1.0
+            Dfmtx_block[4:6, (ns .+model.v_ainds)] .= model.mat33             # 3x3
+            # Dfmtx_block[4:6, (ns .+model.v_ainds)] .= -model.arm_mass_mtx              # 3x3
             Dfmtx_block[4:6, (ns + ns + nu).+((5*(joint_before_id-1)).+(1:5))] .= - [I;zeros(2,3)]'*dt   # 3x3   # this for joint before 
             Dfmtx_block[4:6, (ns + ns + nu).+((5*(joint_after_id-1)).+(1:5))] .= - [-I;zeros(2,3)]'*dt   # 3x3   # this for joint before 
 
@@ -2559,7 +2554,9 @@ function Dfdyn!(model::FloatingSpace,xt1, xt, ut, λt, dt)
 
 
             # d G_qz1t'*λt /dqz1t  
-            Dfmtx_block[11:13, model.q_zinds] .= -model.dGqbTλdqa
+            model.mat34 .= model.dGqbTλdqa
+            model.mat34 .*= -1.0
+            Dfmtx_block[11:13, model.q_zinds] .= model.mat34
             # d G_qz1t'*λt /dqa1t 
             Dfmtx_block[11:13, model.q_ainds] .= -model.dGqbTλdqb 
             Dfmtx_block[11:13, model.q_ainds] .-= model.dGqaTλdqa
@@ -2690,49 +2687,6 @@ function fdyn_attiG!(model::FloatingSpace,xt1, xt)
     return
 end
 
-# test dynamics
-# begin
-#     using Random
-#     Random.seed!(123)
-#     model = FloatingSpace(11)
-#     x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], fill.(pi/4,model.nb))
-#     dr = pi/14
-#     x1 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4+dr], fill.(pi/4+dr,model.nb))
-#     # x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], [pi/4])
-#     # dr = pi/14
-#     # x1 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4+dr], [pi/4+dr]);
-#     u = 2*randn(6+model.nb)
-#     du = 0.01*randn(6+model.nb)
-#     λ = randn(5*model.nb)
-#     dλ = 0.001*randn(5*model.nb)
-#     dxv = zeros(model.ns)
-#     dxv[(13*0).+(4:6)] = randn(3)
-#     dxv[(13*0).+(11:13)] = randn(3)
-#     dxv[(13*1).+(4:6)] = randn(3)
-#     dxv[(13*1).+(11:13)] = randn(3)
-#     dt = 0.01
-#     @time f1 = fdyn(model,x1, x0, u, λ, dt);
-#     @show f1
-#     @time fdyn!(model,x1, x0, u, λ, dt)
-#     @show model.fdyn_vec
-#     f1 - model.fdyn_vec
-#     @test f1 ≈ model.fdyn_vec atol=1e-10
-#     f2 = fdyn(model,x1+dxv, x0+dxv, u+du, λ+dλ, dt)
-#     @time Dfmtx = Dfdyn(model,x1, x0, u, λ, dt);
-#     @time Dfdyn!(model,x1, x0, u, λ, dt)
-#     @test Dfmtx ≈ model.Dfmtx
-
-#     @time attiG_mtx = fdyn_attiG(model,x1,x0)
-#     @time fdyn_attiG!(model,x1,x0)
-#     @test attiG_mtx ≈ model.fdyn_attiG
-
-#     # compare with Forward diff
-#     # faug(z) = fdyn(model, z[1:model.ns], z[model.ns+1:model.ns*2], z[model.ns*2+1:model.ns*2+6+model.nb], z[model.ns*2+6+model.nb+1:end], dt)
-#     # Df2 = ForwardDiff.jacobian(faug,[x1;x0;u;λ])
-
-#     # @test Dfmtx ≈ Df2
-# end
-
 function get_vels(model::FloatingSpace, x)
     nb = model.nb
     vs = [x[(i-1)*13 .+ (4:6)] for i=1:nb+1]
@@ -2793,72 +2747,63 @@ end
 # x is the current state, x⁺ is the next state
 # given current state x and current U
 # use newton's method to solve for the vel part of x and the next state x⁺
-function discrete_dynamics_MC(model::FloatingSpace, x, u, λ_init, dt)
-    n,m = size(model)
-    n̄ = state_diff_size(model)
-    nb = model.nb
-    p = model.p
-    fdyn_n = n*2 + 6 + (nb) + 5*(nb)
-    fdyn_n̄ = n̄*2 + 6 + (nb) + 5*(nb)
+function discrete_dynamics(model::FloatingSpace, x, u, λ_init, dt)
+    n::Int,m::Int = size(model)
+    n̄::Int = state_diff_size(model)
+    nb1::Int = model.nb+1
+    p::Int = model.p
     λ = zeros(eltype(x),5*model.nb)
     λ = λ_init
     x⁺ = Vector(x)
-    for id=1:model.nb+1
+    for id=1:nb1
         x⁺[(13*(id-1)) .+ (1:3)] = x[(13*(id-1)) .+ (1:3)] + x[(13*(id-1)) .+ (4:6)]*dt
-        wat = x[(13*(id-1)) .+ (11:13)]
-        qat = x[(13*(id-1)) .+ (7:10)]
-        x⁺[(13*(id-1)) .+ (7:10)] = dt/2*RS.lmult(SVector{4}(qat))*SVector{4}([sqrt(4/dt^2 -wat'*wat);wat])
+        model.wat .= x[(13*(id-1)) .+ (11:13)]
+        model.qat .= x[(13*(id-1)) .+ (7:10)]
+        x⁺[(13*(id-1)) .+ (7:10)] = dt/2*RS.lmult(SVector{4}(model.qat))*SVector{4}([sqrt(4/dt^2 -model.wat'*model.wat);model.wat])
     end
 
     x⁺_new, λ_new = copy(x⁺), copy(λ)    
-    # storage variables
-    err_vec = zeros(model.ns+model.p)
-    G = zeros(model.p,n̄)
-    Fdyn = zeros(n,fdyn_n̄)
-    F = zeros(n+model.p,n̄+model.p)       # newton step matrix 
-    Δx⁺ = zeros(n̄)
-    Δs = zeros(n̄+model.p)        
-    FΔs = zeros(n+model.p)  
-    j=0
-    α = 1
-    ρ = 0.5
-    c = 0.01 
-    err = 0
-    err_new = 0
+
+    j::Int =0
+    α::Float64 = 1
+    ρ::Float64 = 0.5
+    c::Float64 = 0.01 
+    err::Float64 = 0
+    err_new::Float64 = 0
 
     max_iters, line_iters, ϵ = 50, 10, 1e-6
     for i=1:max_iters  
         # Newton step    
         # 31 = 26 + 5
         fdyn!(model,x⁺, x, u, λ, dt)
-        err_vec[1:model.ns] .= model.fdyn_vec
+        model.err_vec[1:model.ns] .= model.fdyn_vec
         gp1!(model,x⁺,dt)
-        err_vec[model.ns+1:end] .= model.g_val
+        model.err_vec[model.ns+1:end] .= model.g_val
 
-        err = norm(err_vec)
+        err = norm(model.err_vec)
         # println(" err_vec: ", err)
         # jacobian of x+ and λ
         state_diff_jac!(model, x⁺)
         Dgp1!(model,x⁺,dt)
         # G = model.Dgmtx*model.attiG
-        mul!(G,model.Dgmtx,model.attiG)
+        mul!(model.G,model.Dgmtx,model.attiG)
 
         Dfdyn!(model,x⁺, x, u, λ, dt)
         fdyn_attiG!(model,x⁺,x)
         begin
-        mul!(Fdyn,model.Dfmtx,model.fdyn_attiG)
+        mul!(model.Fdyn,model.Dfmtx,model.fdyn_attiG)
 
         # x⁺ , lambda
         # F = [Fdyn[:,1:n̄] Fdyn[:,n̄*2+6+nb+1:end];
         #         G  spzeros(5*nb,5*nb)]
-        F[1:n,1:n̄] .= Fdyn[:,1:n̄]
-        F[1:n,n̄+1:n̄+model.p] .= Fdyn[:,n̄*2+6+nb+1:end]
-        F[n+1:n+model.p,1:n̄] .= G
-        F[n+1:n+model.p,n̄+1:end] .= 0
+        model.F[1:n,1:n̄] .= model.Fdyn[:,1:n̄]
+        model.F[1:n,n̄+1:n̄+model.p] .= model.Fdyn[:,n̄*2+6+model.nb+1:end]
+        model.F[n+1:n+model.p,1:n̄] .= model.G
+        model.F[n+1:n+model.p,n̄+1:end] .= 0
 
         end
-        # Δs = -F\err_vec  #(n̄+5*nb)x1
-        ldiv!(Δs, factorize(F), -err_vec)
+        model.Δs .= -model.F\model.err_vec  #(n̄+5*nb)x1
+        # ldiv!(Δs, factorize(F), -err_vec)
         # backtracking line search
         j=0
         α = 1
@@ -2866,11 +2811,12 @@ function discrete_dynamics_MC(model::FloatingSpace, x, u, λ_init, dt)
         c = 0.01 
 
         err_new = err + 9999
-        while (err_new > err + c*α*(err_vec/err)'*F*Δs)
+        mul!(model.FΔs, model.F, model.Δs)
+        while (err_new > err + c*α*(model.err_vec/err)'*model.FΔs)
 
             λ_new .= λ 
-            λ_new .+= α*Δs[(n̄) .+ (1:5*nb)]
-            Δx⁺ = α*Δs[1:n̄] 
+            λ_new .+= α*model.Δs[(n̄) .+ (1:5*model.nb)]
+            model.Δx⁺ .= α*model.Δs[1:n̄] 
 
             # this is a hack, maps Δx⁺ from size n̄ to N
             # remap_Δx⁺ = atti_G*Δx⁺
@@ -2878,10 +2824,10 @@ function discrete_dynamics_MC(model::FloatingSpace, x, u, λ_init, dt)
             # # update velocities in x⁺
             # vel_inds = get_vels_ind(model)
             # x⁺_new[vel_inds] .= x⁺[vel_inds] + remap_Δx⁺[vel_inds]
-            for id=1:model.nb+1
-                x⁺_new[(13*(id-1)) .+ (1:3)] = x⁺[(13*(id-1)) .+ (1:3)] + Δx⁺[(12*(id-1)) .+ (1:3)]
-                x⁺_new[(13*(id-1)) .+ (4:6)] = x⁺[(13*(id-1)) .+ (4:6)] + Δx⁺[(12*(id-1)) .+ (4:6)]
-                model.vec3 .= Δx⁺[(12*(id-1)) .+ (7:9)]
+            for id=1:nb1
+                x⁺_new[(13*(id-1)) .+ (1:3)] = x⁺[(13*(id-1)) .+ (1:3)] + model.Δx⁺[(12*(id-1)) .+ (1:3)]
+                x⁺_new[(13*(id-1)) .+ (4:6)] = x⁺[(13*(id-1)) .+ (4:6)] + model.Δx⁺[(12*(id-1)) .+ (4:6)]
+                model.vec3 .= model.Δx⁺[(12*(id-1)) .+ (7:9)]
                 model.vec4 .= x⁺[(13*(id-1)) .+ (7:10)]
                 q_lmult!(model, model.vec4)
                 model.vec4[1] = 1.0
@@ -2893,17 +2839,17 @@ function discrete_dynamics_MC(model::FloatingSpace, x, u, λ_init, dt)
 
                 x⁺_new[(13*(id-1)) .+ (7:10)] .= model.qat1
 
-                x⁺_new[(13*(id-1)) .+ (11:13)] = x⁺[(13*(id-1)) .+ (11:13)] + Δx⁺[(12*(id-1)) .+ (10:12)]
+                x⁺_new[(13*(id-1)) .+ (11:13)] = x⁺[(13*(id-1)) .+ (11:13)] + model.Δx⁺[(12*(id-1)) .+ (10:12)]
             end
 
             _, ωs⁺ = get_vels(model, x⁺_new)
             if all(1/dt^2 .>= dot(ωs⁺,ωs⁺))
                 fdyn!(model,x⁺_new, x, u, λ_new, dt)
-                err_vec[1:model.ns] .= model.fdyn_vec
+                model.err_vec[1:model.ns] .= model.fdyn_vec
                 gp1!(model,x⁺_new,dt)
-                err_vec[model.ns+1:end] .= model.g_val
+                model.err_vec[model.ns+1:end] .= model.g_val
 
-                err_new = norm(err_vec)
+                err_new = norm(model.err_vec)
             end
             α = α*ρ
             j += 1
@@ -2920,32 +2866,7 @@ function discrete_dynamics_MC(model::FloatingSpace, x, u, λ_init, dt)
     return x⁺, λ 
 end
 
-# test dynamics simulation
-# begin
 
-#     model = FloatingSpace(10)
-#     n,m = size(model)
-#     n̄ = state_diff_size(model)
-#     @show n
-#     @show n̄
-#     x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], fill.(pi/4,model.nb))
-
-#     U = 0.01*rand(6+model.nb)
-#     dt = 0.001;
-#     λ_init = zeros(5*model.nb)
-#     λ = λ_init
-#     x = x0
-#     @time x1, λ = discrete_dynamics(model,x, U, λ, dt)
-#     @show fdyn(model,x1, x, U, λ, dt)
-#     # println(norm(fdyn(model,x1, x, u, λ, dt)))
-#     x = x0;
-#     for i=1:5
-#         println("step: ",i)
-#         @time x1, λ = discrete_dynamics(model,x, U, λ, dt)
-#         println(norm(fdyn(model,x1, x, U, λ, dt)))
-#         println(norm(g(model,x1)))
-#         x = x1
-#     end
 # end
 
 # test: simulate and visualize 
@@ -2990,7 +2911,7 @@ function RD.discrete_dynamics(::Type{Q}, model::FloatingSpace, x, u, t, dt) wher
     if (t <= 1e-7)
         model.λ_tmp .= 0
     end
-    x1, λ1 = discrete_dynamics_MC(model,  x, u, model.λ_tmp, dt)
+    x1, λ1 = discrete_dynamics(model,  x, u, model.λ_tmp, dt)
     model.λ_tmp .=λ1
     return x1
 end
@@ -3000,7 +2921,7 @@ function Altro.discrete_dynamics_MC(::Type{Q}, model::FloatingSpace, x, u, t, dt
     if (t <= 1e-7)
         model.λ_tmp .= 0
     end
-    x1, λ1 = discrete_dynamics_MC(model,  x, u, model.λ_tmp, dt)
+    x1, λ1 = discrete_dynamics(model,  x, u, model.λ_tmp, dt)
     model.λ_tmp .=λ1
     return x1,λ1
 end
@@ -3014,19 +2935,37 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, Dexp, model::FloatingSpace,
     x = state(z) 
     u = control(z)
     dt = z.dt
+
     @assert dt != 0
     # λ_init = 1e-5*randn(5*model.nb)
     # x1, λ1 = discrete_dynamics(model,  x, u, λ_init, dt)
 
+    # x' = f(x,u)  ∈ quaternion 
+    # A = E(x')*∂f∂x E(x)
+
+
+    # d(x', x, u, λ) = 0  ∈ R^n   "planning with attitude"
+    # ∂d∂x'*E(x')
+    # ∂d∂x*E(x)
+    # A = (∂d∂x'*E(x'))^-1 * ∂d∂x*E(x)
+
     Dfdyn!(model,x⁺, x, u, λ, dt)
-    ldiv!(Dexp.∇f, factorize(model.Dfmtx[:,1:n]), -model.Dfmtx[:,n+1:end])
+    fdyn_attiG!(model, x⁺, x)
+    mul!(model.Dfmtx_error, model.Dfmtx, model.fdyn_attiG)
+    # ldiv!(Dexp.∇f, factorize(model.Dfmtx[:,1:n]), -model.Dfmtx[:,n+1:end])
+    # ldiv!(Dexp.A, factorize(model.Dfmtx_error[:,1:n̄]), -model.Dfmtx[:,n+1:end])
+    # ldiv!(Dexp.B, factorize(model.Dfmtx_error[:,1:n̄]), -model.Dfmtx[:,n+1:end])
+    # ldiv!(Dexp.C, factorize(model.Dfmtx_error[:,1:n̄]), -model.Dfmtx[:,n+1:end])
+    Dexp.A = -sparse(model.Dfmtx_error[:,1:n̄])\model.Dfmtx_error[:,n̄+1:n̄*2]
+    Dexp.B = -sparse(model.Dfmtx_error[:,1:n̄])\model.Dfmtx_error[:,n̄*2+1:n̄*2+6+model.nb]
+    Dexp.C = -sparse(model.Dfmtx_error[:,1:n̄])\model.Dfmtx_error[:,n̄*2+6+model.nb+1:end]
 
     # index of q in n̄
-    ind = BitArray(undef, n̄)
-    for i=1:model.nb+1
-        ind[(i-1)*12 .+ (1:3)] .= 1
-        ind[(i-1)*12 .+ (7:9)] .= 1
-    end
+    # ind = BitArray(undef, n̄)
+    # for i=1:model.nb+1
+    #     ind[(i-1)*12 .+ (1:3)] .= 1
+    #     ind[(i-1)*12 .+ (7:9)] .= 1
+    # end
     Dgp1!(model, x⁺,dt)
     state_diff_jac!(model,x⁺)
     # subattiG = attiG[get_configs_ind(model),ind]

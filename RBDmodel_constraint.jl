@@ -1,13 +1,15 @@
 """Constants"""
-struct EFVConstraint{S,T} <: TO.StageConstraint
+struct EFVConstraint{S,W,T} <: TO.StageConstraint
 	n::Int
 	m::Int
 	model::FloatingSpaceRBD{T}
     maxV::Float64
 	sense::S
+    inds::SVector{W, Int}
 	function EFVConstraint(n::Int, m::Int, model::FloatingSpaceRBD{T}, maxV::Float64,
-			sense::TO.ConstraintSense) where {T}
-		new{typeof(sense), T}(n,m,model,maxV,sense)
+			sense::TO.ConstraintSense, inds=1:n+m) where {W, T}
+        inds = SVector{m+n}(inds)
+		new{typeof(sense),n+m,T}(n,m,model,maxV,sense,inds)
 	end
 end
 TO.sense(con::EFVConstraint) = con.sense
@@ -77,8 +79,10 @@ end
 TO.∇jacobian!(G, con::EFVConstraint{S,T}, z::AbstractKnotPoint, λ::AbstractVector) where {S,T} = true # zeros
 
 # @testset "Constraints" begin
+#     n,m = size(RBDmodel)
+#     dt = 0.005
 #     lin_upper = EFVConstraint(n,m,RBDmodel,8.0, TO.Inequality())
-
+#     @show lin_upper.inds
 #     base_x = [0.01, 0.01, 0.01]
 #     base_q = RS.params(UnitQuaternion(RotZ(0.01)))
 #     base_v = [1., 1., 1.]
@@ -105,10 +109,10 @@ TO.∇jacobian!(G, con::EFVConstraint{S,T}, z::AbstractKnotPoint, λ::AbstractVe
 #     TO.jacobian!(∇c, lin_upper, z2)
 #     @show 
 # end
-# # function TO.jacobian!(∇c, con::EFVConstraint, z::AbstractKnotPoint)
-# # 	∇c[:,con.inds[1]:con.inds[end]] .= con.A
-# # 	return true
-# # end
+# function TO.jacobian!(∇c, con::EFVConstraint, z::AbstractKnotPoint)
+# 	∇c[:,con.inds[1]:con.inds[end]] .= con.A
+# 	return true
+# end
 
 # # function TO.change_dimension(con::EFVConstraint, n::Int, m::Int, ix=1:n, iu=1:m)
 # # 	inds0 = [ix; n .+ iu]  # indices of original z in new z
