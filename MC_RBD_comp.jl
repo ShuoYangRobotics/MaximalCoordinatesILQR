@@ -9,7 +9,7 @@ dt = 0.005
 N = Int(Tf/dt)
 
 """Build MC model"""
-ArmNumber = 6
+ArmNumber = 26
 model = FloatingSpaceOrth(ArmNumber)
 
 """Build RBD model"""
@@ -124,15 +124,15 @@ view_single_state(model, x0)
 
 """Input sequence"""
 U = 0.03*zeros(6+model.nb)
-U[5] = 1
-U[6] = 1
+U[1] = 3
+U[4] = 3
 @show U
 """MC simulation"""
 x = x0
 λ_init = zeros(5*model.nb)
 λ = λ_init
 for idx = 1:N
-    # println("step: ",idx)
+    println("step: ",idx)
     x1, λ1 = discrete_dynamics_MC(model,x, U, λ, dt)
     # println(norm(fdyn(model,x1, x, U, λ1, dt)))
     # println(norm(g(model,x1)))
@@ -162,8 +162,12 @@ RBD.set_configuration!(state, RBD.configuration(state) .+ [zeros(4);base_x0;zero
 
 controller! = function controller!(τ, t, state)
     τ .= 0.03*zeros(6 + model.nb)
+    τ[1] = U[4]
     τ[2] = U[5]
     τ[3] = U[6]
+    τ[4] = U[1]
+    τ[5] = U[2]
+    τ[6] = U[3]
 end
 
 ts, qs, vs = RBD.simulate(state, Tf,controller!, Δt=dt)

@@ -15,3 +15,4 @@
 *.bcf
 *.xml
 *.toml
+cpp/build/
