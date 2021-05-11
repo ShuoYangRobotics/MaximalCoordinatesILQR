@@ -29,6 +29,15 @@ function random_test_ecLQR_laine()
     Qf = 500 * I(nx)
     Cxu = rand(1:nx,convert(Int,floor(nx/3)))
 
+
+    """
+        problem is 
+
+        min \\sum x'Qx + q'x + u'Ru + r'u + u'Hx 
+        s.t   xk+1 = A[k]xk + B[k]u[k]
+              C[k]x_k + D[k]u_k + g[i] = 0
+    """
+
     Q_list = [SizedMatrix{nx,nx}(zeros(Float64,nx,nx)) for i=1:N]
     q_list = [SizedVector{nx}(zeros(Float64,nx)) for i=1:N]
     R_list = [SizedMatrix{nu,nu}(zeros(Float64,nu,nu)) for i=1:N-1]
@@ -68,6 +77,20 @@ function random_test_ecLQR_laine()
         u = ec.Kx_list[i]*x_list[i,:] + ec.kl_list[i]
         x_list[i+1,:] .= A_list[i]*x_list[i,:] + B_list[i]*u
     end
+
+    #final state difference 
+    goaL_diff = norm(xN - x_list[N,:])/nx
+
+    # constraint violation 
+    con_vio = 0
+    for i=1:N-1
+        if i in Cxu
+            u = ec.Kx_list[i]*x_list[i,:] + ec.kl_list[i]
+            con_vio += norm(C_list[i]*x_list[i,:] + D_list[i]*u + g_list[i])
+        end
+    end
+    println("final goal difference:", goaL_diff)
+    println("constraint violation :", con_vio)
     
     return x_list
 end
