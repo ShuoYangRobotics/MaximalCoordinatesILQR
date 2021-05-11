@@ -47,7 +47,7 @@ struct ecLQR{T, nx, nu, ncxu, ncxuN, N}
     mx::SizedVector{nx,T,Vector{T}} 
     mu::SizedVector{nu,T,Vector{T}} 
     Mxx::SizedMatrix{nx,nx,T,2,Matrix{T}}
-    Muu::SizedMatrix{nx,nx,T,2,Matrix{T}}
+    Muu::SizedMatrix{nu,nu,T,2,Matrix{T}}
     Mux::SizedMatrix{nu,nx,T,2,Matrix{T}}
     Nx::Matrix{T}                 # size will change
     Nu::Matrix{T}                 # size will change 
@@ -118,8 +118,11 @@ function ecLQR_backward!(ec::ecLQR{T, nx, nu, ncxu, ncxuN, N}) where {T, nx, nu,
         gl = ec.g_list[i];        
 
         # equation 12
-        ec.mx .= ec.q_list[i] + Fxt'*ec.vx_list[i+1];
-        ec.mu .= ec.r_list[i] + Fut'*ec.vx_list[i+1];
+        ec.mx .= ec.q_list[i];
+        mul!(ec.mx, Transpose(Fxt), ec.vx_list[i+1], 1.0, 1.0)
+        ec.mu .= ec.r_list[i]; 
+        mul!(ec.mu, Transpose(Fut), ec.vx_list[i+1], 1.0, 1.0)
+        
         ec.Mxx .= ec.Q_list[i] + Fxt'*ec.Vxx_list[i+1]*Fxt;
         ec.Muu .= ec.R_list[i] + Fut'*ec.Vxx_list[i+1]*Fut;
         ec.Mux .= ec.H_list[i] + Fut'*ec.Vxx_list[i+1]*Fxt;
@@ -129,7 +132,7 @@ function ecLQR_backward!(ec::ecLQR{T, nx, nu, ncxu, ncxuN, N}) where {T, nx, nu,
         nlt = [gl; ec.contg.Hx_list[i+1]*ec.f_list[i] + ec.contg.hl_list[i+1]];
 
         # svd to get P and Z, equation 13d
-        U,S,V = svd(Nut);
+        U,S,V = svd(Nut, full=true);
         rankNut = length(S[S .> 1e-6])
         if (rankNut == 0)
             Z = V;
@@ -148,13 +151,13 @@ function ecLQR_backward!(ec::ecLQR{T, nx, nu, ncxu, ncxuN, N}) where {T, nx, nu,
             ec.kl_list[i] .= k;
             ec.Kx_list[i] .= K;
         else
-            P = V(:,1:rankNut);
-            Z = V(:,rankNut+1:nu);
+            P = V[:,1:rankNut];
+            Z = V[:,rankNut+1:nu];
             # equation 17 and 18
-            A = Z'*Muut*Z;
+            A = Z'*ec.Muu*Z;
             b = Z';
-            K = -( P*pinv(Nut*P)*Nxt + Z*(A\b)*Muxt );
-            k = -( P*pinv(Nut*P)*nlt + Z*(A\b)*mult );
+            K = -( P*pinv(Nut*P)*Nxt + Z*(A\b)*ec.Mux );
+            k = -( P*pinv(Nut*P)*nlt + Z*(A\b)*ec.mu );
             ec.kl_list[i] .= k;
             ec.Kx_list[i] .= K;
         end

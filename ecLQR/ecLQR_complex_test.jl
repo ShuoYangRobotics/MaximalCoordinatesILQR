@@ -1,35 +1,33 @@
 
 include("ecLQR.jl")
 using Plots
+using MATLAB
 
-function test_ecLQR_laine()
-    # setup problem, 
-    # should be the same as that in 
-    # https://github.com/paulyang1990/equality-constraint-LQR-compare/blob/master/three_by_three_system_state_and_control.m
+function random_test_ecLQR_laine()
+    nj = 1  # number of joint 
+    nx = 13*(nj+1);
+    nu = 6+nj+5*nj;
+    ncxu = 5*nj;
 
-    nx = 3
-    nu = 3
-    ncxu = 3
-
-    x0 = [0.0; 0.0; 0.0]
-    xN = [3.0, 2.0, 1.0]
+    x0 = zeros(nx)
+    xN = Vector{Float64}(1:nx)
 
     traj_time = 1
     dt = 0.01
     N::Int = traj_time / dt
 
-    A = I(3) + dt *[-0.4762    0.0576   -0.8775
-    -0.1532   -0.9880    0.0183
-    -0.8659    0.1432    0.4793]
-    B = [-0.6294   -0.4978   -0.5967
-         -0.3749   -0.4781    0.7943
-         -0.6807    0.7236    0.1143]*dt
+    mat"""
+        ss = rss($nx,2,$nu);
+        $cA = ss.A;
+        $cB = ss.B;
+    """
+    A = I(nx) +dt*cA
+    B = dt*cB
 
     Q = 1e-2 * I(nx)
     R = 1e-3 * I(nu)    
     Qf = 500 * I(nx)
-    Cxu = [N/2]
-
+    Cxu = rand(1:nx,convert(Int,floor(nx/3)))
 
     Q_list = [SizedMatrix{nx,nx}(zeros(Float64,nx,nx)) for i=1:N]
     q_list = [SizedVector{nx}(zeros(Float64,nx)) for i=1:N]
@@ -52,9 +50,9 @@ function test_ecLQR_laine()
         A_list[i] .= A
         B_list[i] .= B
         if i in Cxu
-            C_list[i] = I(nx)
-            D_list[i] = I(nx)
-            g_list[i] = [10.0, 20.0, 30.0]
+            C_list[i] = randn(ncxu, nx)
+            D_list[i] = randn(ncxu, nu)
+            g_list[i] = randn(ncxu, 1)
         end
     end
     Q_list[N] .= Qf
@@ -64,7 +62,7 @@ function test_ecLQR_laine()
                C_list, D_list, g_list, CN, gN)
 
     @time ecLQR_backward!(ec)   
-    x_list = zeros(N,3)
+    x_list = zeros(N,nx)
     x_list[1,:] .= x0
     for i=1:N-1
         u = ec.Kx_list[i]*x_list[i,:] + ec.kl_list[i]
@@ -74,9 +72,6 @@ function test_ecLQR_laine()
     return x_list
 end
 
-
-
-x_list = test_ecLQR_laine()
+x_list = random_test_ecLQR_laine()
 N = size(x_list,1)
-plot(1:N, x_list)
-
+plot(1:N, x_list,legend = false)
