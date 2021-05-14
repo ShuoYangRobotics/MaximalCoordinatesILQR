@@ -25,12 +25,12 @@ function simulate_model(model)
     λ_list[1] .= λ_init
     
     u_list = [SizedVector{m}(zeros(Float64,m)) for i=1:N-1]
-    U = 0.03*zeros(m)
+    U = 0.03*randn(m)
     println("start to simulate")
     @time begin
         for idx = 2:N
             println("step: ",idx)
-            U .= 0.03*zeros(m)
+            U .= 0.03*randn(m)
             u_list[idx-1] .= U
             x1, λ1 = discrete_dynamics(model,x, U, λ, dt)  # solved x1 is the state at t = idx
             x .= x1
@@ -85,29 +85,29 @@ function simulate_model(model)
     # Q,q,R,r,H,c = cost_exp.Q,cost_exp.q,cost_exp.R,cost_exp.r,cost_exp.H,cost_exp.c
     # A,B,C,G = dyn_exp.A, dyn_exp.B, dyn_exp.C, dyn_exp.G
 
-    α = 1.0/32
+    α = 1.0/16
     # combine u and lambda together as input
-    ec_uλ = ecLQR{Float64}(n̄, m+np, np, np, N)
+    ec_zac = ecLQR{Float64}(n̄, m, np, np, N)
     # solve du and K d using ecLQR 
-    ΔV_1, ΔV_2 = ecLQR_backward!(ec_uλ, D, E)
-    println("ec_uλ | ΔV :", -α*ΔV_1)
-    # test ec_uλ
-    constraint_vio = 0
-    for idx= 1:N-1
-        dyn_exp = D[idx]
-        A,B,C,G = dyn_exp.A, dyn_exp.B, dyn_exp.C, dyn_exp.G
-        δx = 0.01*randn(n̄)
-        δu = ec_uλ.kl_list[idx][1:m] 
-        mul!(δu, ec_uλ.Kx_list[idx][1:m,:], δx, 1.0, 1.0)
-        δλ = ec_uλ.kl_list[idx][m+1:end] 
-        mul!(δλ, ec_uλ.Kx_list[idx][m+1:end,:], δx, 1.0, 1.0)
-        constraint_vio += norm(G*(A*δx + B*δu + C*δλ))
-    end
-    println("ec_uλ | total constraint vio:", constraint_vio)
+    @time ΔV_1, ΔV_2 = ecLQR_backward_Zac!(ec_zac, D, E)
+    println("ec_zac | ΔV :", -α*ΔV_1)
+    # # test ec_zac
+    # constraint_vio = 0
+    # for idx= 1:N-1
+    #     dyn_exp = D[idx]
+    #     A,B,C,G = dyn_exp.A, dyn_exp.B, dyn_exp.C, dyn_exp.G
+    #     δx = 0.01*randn(n̄)
+    #     δu = ec_zac.kl_list[idx] 
+    #     mul!(δu, ec_zac.Kx_list[idx], δx, 1.0, 1.0)
+    #     δλ = ec_zac.kλ_list[idx] 
+    #     mul!(δλ, ec_zac.Kλ_list[idx], δx, 1.0, 1.0)
+    #     constraint_vio += norm(G*(A*δx + B*δu + C*δλ))
+    # end
+    # println("ec_zac | total constraint vio:", constraint_vio)
 
 
     # update using ec_uλ
-    ec = ec_uλ
+    ec = ec_zac
 
     # : rollout again, check dJ
     Z̄ = Traj(x_list,u_list,dt_list,t)
@@ -118,8 +118,8 @@ function simulate_model(model)
 
     for k = 1:N-1
         δx .= RobotDynamics.state_diff(model, state(Z̄[k]), state(Z[k]))
-        δu = α*ec.kl_list[k][1:m] 
-        mul!(δu, ec.Kx_list[k][1:m,:], δx, 1.0, 1.0)
+        δu = α*ec.kl_list[k]
+        mul!(δu, ec.Kx_list[k], δx, 1.0, 1.0)
         # δλ = α*ec.kl_list[k][m+1:end]
         # mul!(δλ, ec.Kx_list[k][m+1:end,:], δx, 1.0, 1.0)
         ū = control(Z[k]) + δu
@@ -140,26 +140,26 @@ function simulate_model(model)
 
     TO.cost!(obj, Z̄)
     _J = TO.get_J(obj)
-    println("after update using ec_uλ, cost is:", sum(_J))
+    println("after update using ec_zac, cost is:", sum(_J))
 
 
 
     ec_u = ecLQR{Float64}(n̄, m, np, np, N)
-    ΔV_1, ΔV_2 = ecLQR_backward_Jan!(ec_u, D, E)
+    @time ΔV_1, ΔV_2 = ecLQR_backward_Jan!(ec_u, D, E)
     println("ec_u | ΔV :", -α*ΔV_1 )
-    # test ec_u
-    constraint_vio = 0
-    for idx= 1:N-1
-        dyn_exp = D[idx]
-        A,B,C,G = dyn_exp.A, dyn_exp.B, dyn_exp.C, dyn_exp.G
-        δx = 0.01*randn(n̄)
-        δu = ec_u.kl_list[idx] 
-        mul!(δu, ec_u.Kx_list[idx], δx, 1.0, 1.0)
-        δλ = ec_u.kλ_list[idx] 
-        mul!(δλ, ec_u.Kλ_list[idx], δx, 1.0, 1.0)
-        constraint_vio += norm(G*(A*δx + B*δu + C*δλ))
-    end
-    println("ec_u | total constraint vio:", constraint_vio)
+    # # test ec_u
+    # constraint_vio = 0
+    # for idx= 1:N-1
+    #     dyn_exp = D[idx]
+    #     A,B,C,G = dyn_exp.A, dyn_exp.B, dyn_exp.C, dyn_exp.G
+    #     δx = 0.01*randn(n̄)
+    #     δu = ec_u.kl_list[idx] 
+    #     mul!(δu, ec_u.Kx_list[idx], δx, 1.0, 1.0)
+    #     δλ = ec_u.kλ_list[idx] 
+    #     mul!(δλ, ec_u.Kλ_list[idx], δx, 1.0, 1.0)
+    #     constraint_vio += norm(G*(A*δx + B*δu + C*δλ))
+    # end
+    # println("ec_u | total constraint vio:", constraint_vio)
     # update using ec_u
     ec = ec_u
 
@@ -188,6 +188,8 @@ function simulate_model(model)
 
         # dyn_exp = D[k]
         # A,B,C,G = dyn_exp.A, dyn_exp.B, dyn_exp.C, dyn_exp.G
+        # @show size(C)
+        # @show rank(C)
         # println(norm(G*(A*δx + B*δu + C*actual_δλ)))
 
     end
@@ -199,11 +201,11 @@ function simulate_model(model)
 
 
     # # compare the ΔV of the two cases
-    return ec_uλ, ec_u
+    return ec_zac, ec_u
 end
 
 
 
 
-model = FloatingSpaceOrth(2)
-ec_uλ, ec_u = simulate_model(model)
+model = FloatingSpaceOrth(1)
+ec_zac, ec_u = simulate_model(model)
