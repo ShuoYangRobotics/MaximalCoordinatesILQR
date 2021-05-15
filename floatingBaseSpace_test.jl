@@ -159,7 +159,7 @@
 
 # test dynamics simulation
 function test_dyn()
-    model = FloatingSpace(3)
+    model = FloatingSpace(1)
     n,m = size(model)
     n̄ = state_diff_size(model)
     @show n

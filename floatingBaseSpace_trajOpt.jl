@@ -4,7 +4,7 @@ include("floatingBaseSpace.jl")
 include("floatingBaseSpace_test.jl")
 using Profile
 using TimerOutputs
-model = FloatingSpaceOrth(3)
+model = FloatingSpaceOrth(1)
 
 # run test to trigger model function compile
 test_dyn()
@@ -13,7 +13,7 @@ test_dyn()
 function solve_altro_test(model)
     # trajectory 
     N = 100   
-    dt = 0.005                  # number of knot points
+    dt = 0.01                  # number of knot points
     tf = (N-1)*dt           # final time
     n,m = size(model)
 
@@ -38,28 +38,28 @@ function solve_altro_test(model)
     
     #  limit the velocity of the last link 
     # index of the last link
-    vmax = 5.0
-    statea_inds!(model, model.nb+1)
-    p = 3
-    A = zeros(p,n+m)
-    A[:,model.v_ainds] = I(3)
-    b = zeros(p)
-    b .= vmax
-    b2 = zeros(p)
-    b2 .= -vmax
+    # vmax = 5.0
+    # statea_inds!(model, model.nb+1)
+    # p = 3
+    # A = zeros(p,n+m)
+    # A[:,model.v_ainds] = I(3)
+    # b = zeros(p)
+    # b .= vmax
+    # b2 = zeros(p)
+    # b2 .= -vmax
 
-    lin_lower = LinearConstraint(n,m,A,b, Inequality())
-    lin_upper = LinearConstraint(n,m,-A,-b2, Inequality())
+    # lin_lower = LinearConstraint(n,m,A,b, Inequality())
+    # lin_upper = LinearConstraint(n,m,-A,-b2, Inequality())
 
-    add_constraint!(conSet, lin_lower, 1:N-1)
-    add_constraint!(conSet, lin_upper, 1:N-1)
+    # add_constraint!(conSet, lin_lower, 1:N-1)
+    # add_constraint!(conSet, lin_upper, 1:N-1)
 
-    u_max = vcat(0.0003*(@SVector ones(2)),Inf*(@SVector ones(m-2)))
-    u_min = vcat(-0.0003*(@SVector ones(2)),-Inf*(@SVector ones(m-2)))
-    x_max=Inf*(@SVector ones(n))
-    x_min=-Inf*(@SVector ones(n))
-    control_bound = BoundConstraint(n, m; x_min, x_max, u_min, u_max)
-    add_constraint!(conSet, control_bound, 1:N-1)
+    # u_max = vcat(0.0003*(@SVector ones(2)),Inf*(@SVector ones(m-2)))
+    # u_min = vcat(-0.0003*(@SVector ones(2)),-Inf*(@SVector ones(m-2)))
+    # x_max=Inf*(@SVector ones(n))
+    # x_min=-Inf*(@SVector ones(n))
+    # control_bound = BoundConstraint(n, m; x_min, x_max, u_min, u_max)
+    # add_constraint!(conSet, control_bound, 1:N-1)
     
     to = TimerOutput()
     # # problem

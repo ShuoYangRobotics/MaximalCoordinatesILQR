@@ -552,13 +552,15 @@ function ecLQR_backward_Zac!(ec::ecLQR{T, nx, nu, ncxu, ncxuN, nk, N}, D, E) whe
         # end
         # @time begin
             mul!(ec.tmp_nx[1], B, ec.lu)
-            t1 = -ec.lu'*r 
-            t1 -= dot(ec.vx_list[i+1],ec.tmp_nx[1])
+            t1 = dot(ec.lu,r)  # compare to -ec.lu'*r, no memory allocation
+            t1 = -1.0*t1 
+            t1 -= dot(vx,ec.tmp_nx[1])
 
 
             mul!(ec.tmp_nu[1], R, ec.lu)
-            t2 = 0.5*ec.lu'*ec.tmp_nu[1] 
-            mul!(ec.tmp_nxnu[1], ec.Vxx_list[i+1], B)
+            t2 = dot(ec.lu,ec.tmp_nu[1])     # compare to 0.5*ec.lu'*tmp_nu[1], no memory allocation
+            t2 = 0.5*t2
+            mul!(ec.tmp_nxnu[1], Vxx, B)
             mul!(ec.tmp_nunu[1], Transpose(B), ec.tmp_nxnu[1])
 
             mul!(ec.tmp_nu[2], ec.tmp_nunu[1], ec.lu)
@@ -571,7 +573,7 @@ function ecLQR_backward_Zac!(ec::ecLQR{T, nx, nu, ncxu, ncxuN, nk, N}, D, E) whe
             mul!(ec.tmp_nxnx[1], Transpose(ec.Ku), ec.tmp_nunx[1])  # Ku'*R*Ku
             ec.Vxx_list[i] .+= ec.tmp_nxnx[1]
 
-            mul!(ec.tmp_nxnx[2], ec.Vxx_list[i+1], ec.Abar)  # ec.Vxx_list[i+1]*Abar
+            mul!(ec.tmp_nxnx[2], Vxx, ec.Abar)  # ec.Vxx_list[i+1]*Abar
             mul!(ec.tmp_nxnx[3], Transpose(ec.Abar), ec.tmp_nxnx[2])  # Abar'*ec.Vxx_list[i+1]*Abar
             ec.Vxx_list[i] .+= ec.tmp_nxnx[3]
 
@@ -592,11 +594,11 @@ function ecLQR_backward_Zac!(ec::ecLQR{T, nx, nu, ncxu, ncxuN, nk, N}, D, E) whe
             ec.tmp_nx[3] .*= β
             ec.vx_list[i] .+= ec.tmp_nx[3]    # q - Ku'*r + Ku'*R*lu + β*Kλ'*lλ
 
-            mul!(ec.tmp_nx[4], ec.Vxx_list[i+1], ec.bbar)
+            mul!(ec.tmp_nx[4], Vxx, ec.bbar)
             mul!(ec.tmp_nx[5], Transpose(ec.Abar), ec.tmp_nx[4]) #Abar'*ec.Vxx_list[i+1]*bbar
             ec.vx_list[i] .+= ec.tmp_nx[5] 
 
-            mul!(ec.tmp_nx[1], Transpose(ec.Abar), ec.vx_list[i+1])
+            mul!(ec.tmp_nx[1], Transpose(ec.Abar), vx)
             ec.vx_list[i] .+= ec.tmp_nx[1]                            # + Abar'*ec.vx_list[i+1]
             
             ΔV_1 += t1
