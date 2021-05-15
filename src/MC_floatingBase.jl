@@ -2974,9 +2974,9 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, Dexp, model::FloatingSpace,
     mul!(Dexp.G, model.Dgmtx, model.attiG)
 end
 
-# function TO.error_expansion!(D::Vector{<:TO.DynamicsExpansionMC}, model::FloatingSpace, G)
-#     # do nothing for floatingBaseSpace model 
-# end
+function TO.error_expansion!(D::Vector{<:TO.DynamicsExpansionMC}, model::FloatingSpace, G)
+    # do nothing for floatingBaseSpace model 
+end
 
 function generate_config_rc2mc(
     model::FloatingSpace, 
@@ -3016,4 +3016,49 @@ function generate_config_rc2mc(
         pin += 2*delta
     end
     return state
+end
+
+function simulate(model::FloatingSpace, x0, Tf, control!::Function, dt)
+    x = x0
+    λ_init = zeros(5*model.nb)
+    λ = λ_init
+    state_hist = [x0]
+    U = zeros(6 + model.nb)
+    for idx = 1:Int(Tf/dt)
+        control!(U, idx, x)
+        x, λ = discrete_dynamics(model,x, U, λ, dt)
+        push!(state_hist, x)
+    end
+    return state_hist
+end
+
+function view_single_state(model::FloatingSpace, x)
+    mech = vis_mech_generation(model)
+    storage_single = CD.Storage{Float64}(Base.OneTo(1),length(mech.bodies))
+    setStates!(model, mech, x)
+    CD.discretizestate!(mech)
+    for i=1:model.nb+1
+        storage_single.x[i][1] = mech.bodies[i].state.xc
+        storage_single.v[i][1] = mech.bodies[i].state.vc
+        storage_single.q[i][1] = mech.bodies[i].state.qc
+        storage_single.ω[i][1] = mech.bodies[i].state.ωc
+    end
+    visualize(mech, storage_single, env = "editor")
+end
+
+function view_sequence(model::FloatingSpace, state_hist)
+    N = length(state_hist) - 1
+    mech = vis_mech_generation(model)
+    steps = Base.OneTo(Int(N))
+    storage = CD.Storage{Float64}(steps,length(mech.bodies))
+    for idx = 1:N
+        setStates!(model, mech, state_hist[idx])
+        for i=1:model.nb+1
+            storage.x[i][idx] = mech.bodies[i].state.xc
+            storage.v[i][idx] = mech.bodies[i].state.vc
+            storage.q[i][idx] = mech.bodies[i].state.qc
+            storage.ω[i][idx] = mech.bodies[i].state.ωc
+        end
+    end
+    visualize(mech,storage, env = "editor")
 end
