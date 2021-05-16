@@ -3,7 +3,8 @@ Pkg.activate(joinpath(@__DIR__,"..","..")); Pkg.instantiate();
 using TimerOutputs
 using Test
 include("../../src/MC_floatingBase.jl")
-"""Time Constants"""
+
+"""Constants"""
 Tf = 5
 dt = 0.005
 N = Int(Tf/dt)
@@ -30,7 +31,7 @@ x0 = generate_config(MCmodel, [base_x0;pi/3], joint_angles0);
 view_single_state(MCmodel, x0)
 
 """Define controller"""
-controller! = function controller!(τ, t, rcstate)
+controller! = function controller!(τ, t, mcstate)
     τ .= U
 end
 
