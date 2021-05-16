@@ -18,11 +18,12 @@ base_x0 = [0., 0., 1.]
 base_q0 = RS.params(UnitQuaternion(RotZ(pi/3)))
 base_v0 = [0., 0., 0.]
 base_ω0 = [0., 0., 0.]
-joint_angles0 = fill.(pi/13,RBDmodel.nb)
+joint_angles0 = fill.(0.,RBDmodel.nb)
 
 """Input sequence"""
 U = 0.03*zeros(6 + RBDmodel.nb)
 # U = [Base_forces; Base_torques; Joint_torque]
+# U is defined in body frame
 U[1] = 1
 U[4] = 1
 
@@ -55,7 +56,7 @@ view_sequence(RBDmodel, qs, vs)
 # state (q) q x θ  (v) w  v  ̇θ̇    control   τ   F    jointτ
 # initialize a knotpoint using the first state and controls
 z = KnotPoint([qs[1];vs[1]...],[U[4:6];U[1:3];U[7:end]],dt)
-xnext = discrete_dynamics(RBDmodel, z)
+xnext = RD.discrete_dynamics(RBDmodel, z)
 # they should be the same
 @test xnext[1:10] ≈ qs[2]
 @test xnext[11:19] ≈ vs[2]

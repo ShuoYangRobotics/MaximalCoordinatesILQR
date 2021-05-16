@@ -20,16 +20,16 @@ base_x0 = [0., 0., 1.]
 base_q0 = RS.params(UnitQuaternion(RotZ(pi/2)))
 base_v0 = [0., 0., 0.]
 base_ω0 = [0., 0., 0.]
-joint_angles0 = fill.(pi/13,RBDmodel.nb)
+joint_angles0 = fill.(0.,RBDmodel.nb)
 
 """Input sequence"""
 U = 0.03*zeros(6 + MCmodel.nb)
 # U = [Base_forces; Base_torques; Joint_torque]
-U[1] = 1
+U[3] = 1
 
 """Set initial conditions"""
 # MC
-x0 = generate_config(MCmodel, [base_x0;pi/3], joint_angles0);
+x0 = generate_config(MCmodel, [base_x0;pi/2], joint_angles0);
 # RBD
 rcstate = RBD.MechanismState(RBDmodel.tree)
 RBD.set_configuration!(rcstate, joints(RBDmodel.tree)[1], base_q0) # set floating joint rotation
@@ -64,6 +64,13 @@ view_sequence(MCmodel, states)
 
 
 # compare base position
-@test qs[1][5:7] ≈ states[1][1:3]
-@test qs[2][5:7] ≈ states[2][1:3]
-@test qs[N][5:7] ≈ states[N][1:3]
+@test qs[1][5:7] ≈ states[1][1:3] atol = 1e-3
+@test qs[2][5:7] ≈ states[2][1:3] atol = 1e-3
+@test qs[N][5:7] ≈ states[N][1:3] atol = 1e-3
+
+# compare base orientation
+@test qs[1][1:4] ≈ states[1][7:10] atol = 1e-3
+@test qs[2][1:4] ≈ states[2][7:10] atol = 1e-3
+@test qs[N][1:4] ≈ states[N][7:10] atol = 1e-3
+
+states[1][1:13]

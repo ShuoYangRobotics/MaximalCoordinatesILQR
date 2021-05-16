@@ -18,7 +18,7 @@ base_x0 = [0., 0., 1.]
 base_q0 = RS.params(UnitQuaternion(RotZ(pi/3)))
 base_v0 = [0., 0., 0.]
 base_ω0 = [0., 0., 0.]
-joint_angles0 = fill.(pi/13,MCmodel.nb)
+joint_angles0 = fill.(0.,MCmodel.nb)
 
 """Input sequence"""
 U = 0.03*zeros(6 + MCmodel.nb)
