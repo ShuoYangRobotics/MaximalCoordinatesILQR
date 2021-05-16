@@ -23,6 +23,7 @@ joint_angles0 = fill.(0.,MCmodel.nb)
 """Input sequence"""
 U = 0.03*zeros(6 + MCmodel.nb)
 # U = [Base_forces; Base_torques; Joint_torque]
+# U is defined in body frame
 U[1] = 1
 U[4] = 1
 
@@ -32,7 +33,9 @@ view_single_state(MCmodel, x0)
 
 """Define controller"""
 controller! = function controller!(τ, t, mcstate)
-    τ .= U
+    τ[1:3] .= UnitQuaternion(mcstate[7:10]...) * U[1:3] # rotate from body frame to world frame
+    τ[4:6] .= U[4:6]
+    τ[7:end] .= U[7:end]
 end
 
 """Run simulation"""
