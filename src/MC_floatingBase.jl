@@ -3062,3 +3062,65 @@ function view_sequence(model::FloatingSpace, state_hist)
     end
     visualize(mech,storage, env = "editor")
 end
+
+# test dynamics simulation
+function test_dyn()
+    model = FloatingSpace(1)
+    n,m = size(model)
+    n̄ = state_diff_size(model)
+    @show n
+    @show n̄
+    x0 = generate_config_with_rand_vel(model, [2.0;2.0;1.0;pi/4], fill.(pi/4,model.nb))
+
+    U = 0.01*rand(6+model.nb)
+    dt = 0.001;
+    λ_init = zeros(5*model.nb)
+    λ = λ_init
+    x = x0
+    @time x1, λ = discrete_dynamics(model,x, U, λ, dt)
+    @show fdyn(model,x1, x, U, λ, dt)
+    # println(norm(fdyn(model,x1, x, u, λ, dt)))
+    x = x0;
+    for i=1:5
+        println("step: ",i)
+        @time x1, λ = discrete_dynamics(model,x, U, λ, dt)
+        println(norm(fdyn(model,x1, x, U, λ, dt)))
+        println(norm(g(model,x1)))
+        x = x1
+    end
+end
+
+function test2()
+    model = FloatingSpaceOrth(4)
+    x0 = generate_config(model, [0.0;0.0;1.0;pi/2], fill.(pi/4,model.nb));
+    Tf = 25
+    dt = 0.005
+    N = Int(Tf/dt)
+
+    # mech = vis_mech_generation(model)
+    x = x0
+    λ_init = zeros(5*model.nb)
+    λ = λ_init
+    U = 0.3*rand(6+model.nb)
+    # U[7] = 0.0001
+    # steps = Base.OneTo(Int(N))
+    # storage = CD.Storage{Float64}(steps,length(mech.bodies))
+    println("start to simulate")
+    @time begin
+        for idx = 1:N
+            # println("step: ",idx)
+            x1, λ1 = discrete_dynamics(model,x, U, λ, dt)
+            # println(norm(fdyn(model,x1, x, U, λ1, dt)))
+            # println(norm(g(model,x1)))
+            # setStates!(model,mech,x1)
+            # for i=1:model.nb+1
+            #     storage.x[i][idx] = mech.bodies[i].state.xc
+            #     storage.v[i][idx] = mech.bodies[i].state.vc
+            #     storage.q[i][idx] = mech.bodies[i].state.qc
+            #     storage.ω[i][idx] = mech.bodies[i].state.ωc
+            # end
+            x = x1
+            λ = λ1
+        end 
+    end
+end

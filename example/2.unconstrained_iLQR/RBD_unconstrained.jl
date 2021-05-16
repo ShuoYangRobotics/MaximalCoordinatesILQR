@@ -81,6 +81,7 @@ end
 view_sequence(RBDmodel, qs, vs)
 
 """Plot and save results"""
+
 using Plots
 result_path = "results/2.unconstrained_iLQR/"
 file_name = "RBD_unconstrained"
