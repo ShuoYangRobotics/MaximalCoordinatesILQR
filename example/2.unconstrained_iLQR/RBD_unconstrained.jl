@@ -8,7 +8,7 @@ include("../../src/RBD_floatingBase.jl")
 Tf = 0.5
 dt = 0.005
 N = Int(Tf/dt)
-ArmNumber = 3
+ArmNumber = 12
 
 """Generate model"""
 RBDmodel = FloatingSpaceOrthRBD(ArmNumber)
@@ -59,6 +59,8 @@ function solve_altro_test(RBDmodel, dt, N)
         static_bp=0, 
         square_root = true,
         iterations=1000, bp_reg=true,
+        dJ_counter_limit = 1,
+        iterations_inner = 30,
         cost_tolerance=1e-4, constraint_tolerance=1e-4,
         show_summary=true)
     altro = ALTROSolver(prob, opts)
@@ -66,6 +68,8 @@ function solve_altro_test(RBDmodel, dt, N)
     solve!(altro);
     return altro
 end
+altro = solve_altro_test(RBDmodel, dt, N)
+# run it twice to get execution time
 altro = solve_altro_test(RBDmodel, dt, N)
 
 """Visualization"""
@@ -75,8 +79,8 @@ U_list = controls(altro)
 qs = []
 vs = []
 for idx = 1:N
-    push!(qs,X_list[idx][1:10])
-    push!(vs,X_list[idx][11:end])
+    push!(qs,X_list[idx][1:(7 + ArmNumber)])
+    push!(vs,X_list[idx][(8 + ArmNumber):end])
 end
 view_sequence(RBDmodel, qs, vs)
 
@@ -84,7 +88,7 @@ view_sequence(RBDmodel, qs, vs)
 
 using Plots
 result_path = "results/2.unconstrained_iLQR/"
-file_name = "RBD_unconstrained"
+file_name = "RBD_unconstrained_"*string(ArmNumber)*"Arms"
 
 # plot velocity of the last link 
 velocity_list = zeros(N,3)

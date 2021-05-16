@@ -50,6 +50,8 @@ function solve_altro_test(model, N, dt)
         static_bp=0, 
         square_root = true,
         iterations=150, bp_reg=true,
+        dJ_counter_limit = 1,
+        iterations_inner = 30,
         cost_tolerance=1e-4, constraint_tolerance=1e-4)
     altro = ALTROSolver(prob, opts)
     set_options!(altro, show_summary=true)
@@ -57,6 +59,8 @@ function solve_altro_test(model, N, dt)
     aa = 1;
     return altro
 end
+altro = solve_altro_test(MCmodel, N, dt)
+# run it twice to get execution time
 altro = solve_altro_test(MCmodel, N, dt)
 
 """Visualization"""
@@ -82,13 +86,13 @@ view_sequence(MCmodel, Xfinal_list)
 
 using Plots
 result_path = "results/2.unconstrained_iLQR/"
-file_name = "MC_unconstrained"
+file_name = "MC_unconstrained_"*string(ArmNumber)*"Arms"
 
 # plot velocity of the last link
 statea_inds!(MCmodel, MCmodel.nb+1)
 p = zeros(N,3)
 for dim=1:3
-p[:,dim] .= [Xfinal_list[i][MCmodel.v_ainds[dim]] for i=1:N]
+    p[:,dim] .= [Xfinal_list[i][MCmodel.v_ainds[dim]] for i=1:N]
 end
 plot(1:N, p, title = "End Effector velocity", labels = ["x" "y" "z"],fmt = :png)
 xlabel!("Time step")
