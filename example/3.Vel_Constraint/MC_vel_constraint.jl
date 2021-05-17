@@ -8,7 +8,7 @@ include("../../src/MC_floatingBase.jl")
 Tf = 0.5
 dt = 0.005
 N = Int(Tf/dt)
-ArmNumber = 3
+ArmNumber = 1
 
 """Generate model"""
 MCmodel = FloatingSpaceOrth(ArmNumber)
@@ -43,7 +43,7 @@ function solve_altro_test(model, N, dt)
     
     # limit the velocity of the last link 
     # index of the last link
-    vmax = 8.0
+    vmax = 3.0
     statea_inds!(model, model.nb+1)
     p = 3
     A = zeros(p,n+m)
