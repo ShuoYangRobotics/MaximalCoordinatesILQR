@@ -2974,6 +2974,21 @@ function Altro.discrete_jacobian_MC!(::Type{Q}, Dexp, model::FloatingSpace,
     mul!(Dexp.G, model.Dgmtx, model.attiG)
 end
 
+function RD.discrete_jacobian!(::Type{Q}, ∇f, model::FloatingSpace,
+    z::AbstractKnotPoint{T,N,M}, args...) where {T,N,M,Q<:RD.Explicit}
+    n,m = size(model)
+    n̄ = state_diff_size(model)
+    x = state(z) 
+    u = control(z)
+    λ_init = 1e-5*randn(5*model.nb)
+    x1, λ1 = discrete_dynamics(model,  x, u, λ_init, dt)
+    Dfdyn!(model,x1, x, u, λ, dt)
+    # fdyn_attiG!(model, x1, x)
+    # mul!(model.Dfmtx_error, model.Dfmtx, model.fdyn_attiG)
+    ∇f[:,1:n] = -sparse(model.Dfmtx[:,1:n])\model.Dfmtx[:,n+1:n*2]
+    ∇f[:,n+1:n+m]= -sparse(model.Dfmtx[:,1:n])\model.Dfmtx[:,n*2+1:n*2+6+model.nb]
+end
+
 function TO.error_expansion!(D::Vector{<:TO.DynamicsExpansionMC}, model::FloatingSpace, G)
     # do nothing for floatingBaseSpace model 
 end

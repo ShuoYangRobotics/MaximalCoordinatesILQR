@@ -10,7 +10,7 @@ include("../../src/MC_floatingBase.jl")
 Tf = 0.5
 dt = 0.005
 N = Int(Tf/dt)
-ArmNumber = 12
+ArmNumber = 3
 
 """Generate model"""
 RBDmodel = FloatingSpaceOrthRBD(ArmNumber)
