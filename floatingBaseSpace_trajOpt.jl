@@ -4,7 +4,7 @@ include("floatingBaseSpace.jl")
 include("floatingBaseSpace_test.jl")
 using Profile
 using TimerOutputs
-model = FloatingSpaceOrth(1)
+model = FloatingSpaceOrth(3)
 
 # run test to trigger model function compile
 test_dyn()
@@ -13,7 +13,7 @@ test_dyn()
 function solve_altro_test(model)
     # trajectory 
     N = 100   
-    dt = 0.01                  # number of knot points
+    dt = 0.005                  # number of knot points
     tf = (N-1)*dt           # final time
     n,m = size(model)
 
@@ -74,7 +74,6 @@ function solve_altro_test(model)
     altro = ALTROSolver(prob, opts)
     set_options!(altro, show_summary=true)
     solve!(altro);
-    aa = 1;
     return altro
 end
 

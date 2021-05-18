@@ -10,10 +10,10 @@ function simulate_model(model)
     np = model.p   # constraint size
     n̄ = RD.state_diff_size(model)
 
-    x0 = generate_config(model, [0.0;0.0;1.0;pi/2], fill.(pi/4,model.nb));
-    xf = generate_config(model, [0.3;0.3;1.0;pi/6], fill.(pi/6,model.nb));
-    Tf = 1
-    dt = 0.01
+    x0 = generate_config(model, [0.0;0.0;0.0;0.0], fill.(0.0,model.nb));
+    xf = generate_config(model, [1.3;0.3;1.0;pi/6], fill.(pi/6,model.nb));
+    Tf = 3
+    dt = 0.005
     N = Int(Tf/dt) 
     x_list = [SizedVector{n}(zeros(Float64,n)) for i=1:N]
     x_list[1] .= x0
@@ -120,13 +120,13 @@ function simulate_model(model)
         δx .= RobotDynamics.state_diff(model, state(Z̄[k]), state(Z[k]))
         δu = α*ec.kl_list[k]
         mul!(δu, ec.Kx_list[k], δx, 1.0, 1.0)
-        # δλ = α*ec.kl_list[k][m+1:end]
-        # mul!(δλ, ec.Kx_list[k][m+1:end,:], δx, 1.0, 1.0)
+        δλ = α*ec.kλ_list[k]
+        mul!(δλ, ec.Kλ_list[k], δx, 1.0, 1.0)
         ū = control(Z[k]) + δu
-        # Λ2[k] = λ_list[k] + δλ
+        Λ2[k] = λ_list[k] + δλ
         # ū = control(Z[k])
         RobotDynamics.set_control!(Z̄[k], ū)
-        x⁺, Λ2[k] = discrete_dynamics(model,state(Z̄[k]), control(Z̄[k]), λ_list[k], Z̄[k].dt)
+        x⁺, Λ2[k] = discrete_dynamics(model,state(Z̄[k]), control(Z̄[k]), Λ2[k], Z̄[k].dt)
         actual_δλ = Λ2[k] - λ_list[k]
         Z̄[k+1].z = [x⁺; control(Z[k+1])]
 
@@ -142,70 +142,12 @@ function simulate_model(model)
     _J = TO.get_J(obj)
     println("after update using ec_zac, cost is:", sum(_J))
 
-
-
-    ec_u = ecLQR{Float64}(n̄, m, np, np, N)
-    @time ΔV_1, ΔV_2 = ecLQR_backward_Jan!(ec_u, D, E)
-    println("ec_u | ΔV :", -α*ΔV_1 )
-    # # test ec_u
-    # constraint_vio = 0
-    # for idx= 1:N-1
-    #     dyn_exp = D[idx]
-    #     A,B,C,G = dyn_exp.A, dyn_exp.B, dyn_exp.C, dyn_exp.G
-    #     δx = 0.01*randn(n̄)
-    #     δu = ec_u.kl_list[idx] 
-    #     mul!(δu, ec_u.Kx_list[idx], δx, 1.0, 1.0)
-    #     δλ = ec_u.kλ_list[idx] 
-    #     mul!(δλ, ec_u.Kλ_list[idx], δx, 1.0, 1.0)
-    #     constraint_vio += norm(G*(A*δx + B*δu + C*δλ))
-    # end
-    # println("ec_u | total constraint vio:", constraint_vio)
-    # update using ec_u
-    ec = ec_u
-
-    # : rollout again, check dJ
-    Z̄ = Traj(x_list,u_list,dt_list,t)
-    Z̄[1].z = [x0; control(Z[1])]
-	δx = zeros(n̄)
-	δu = zeros(m)
-    Λ2 = λ_list
-
-    for k = 1:N-1
-        δx .= RobotDynamics.state_diff(model, state(Z̄[k]), state(Z[k]))
-        δu .= α*ec.kl_list[k][1:m] 
-        mul!(δu, ec.Kx_list[k][1:m,:], δx, 1.0, 1.0)
-        # δλ = α*ec.kλ_list[k]
-        # mul!(δλ, ec.Kλ_list[k], δx, 1.0, 1.0)
-        ū = control(Z[k]) + δu
-        # Λ2[k] = λ_list[k] + δλ
-        # ū = control(Z[k])
-        RobotDynamics.set_control!(Z̄[k], ū)
-        x⁺, Λ2[k] = discrete_dynamics(model,state(Z̄[k]), control(Z̄[k]), λ_list[k], Z̄[k].dt)
-        actual_δλ = Λ2[k] - λ_list[k]
-        Z̄[k+1].z = [x⁺; control(Z[k+1])]
-
-        # check δ terms
-
-        # dyn_exp = D[k]
-        # A,B,C,G = dyn_exp.A, dyn_exp.B, dyn_exp.C, dyn_exp.G
-        # @show size(C)
-        # @show rank(C)
-        # println(norm(G*(A*δx + B*δu + C*actual_δλ)))
-
-    end
-
-    TO.cost!(obj, Z̄)
-    _J = TO.get_J(obj)
-    println("after update using ec_u, cost is:", sum(_J))
-
-
-
     # # compare the ΔV of the two cases
-    return ec_zac, ec_u
+    return ec_zac
 end
 
 
 
 
-model = FloatingSpaceOrth(1)
-ec_zac, ec_u = simulate_model(model)
+model = FloatingSpaceOrth(3)
+ec_zac = simulate_model(model)

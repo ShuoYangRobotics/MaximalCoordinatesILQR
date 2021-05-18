@@ -367,7 +367,7 @@ function ecLQR_backward!(ec::ecLQR{T, nx, nu, ncxu, ncxuN, nk, N}, D, E) where {
 end
 
 # Follow Jan's 
-function ecLQR_backward_Jan!(ec::ecLQR{T, nx, nu, ncxu, ncxuN, nk, N}, D, E) where {T, nx, nu, ncxu, ncxuN, nk, N}    ΔV = 0
+function ecLQR_backward_Jan!(ec::ecLQR{T, nx, nu, ncxu, ncxuN, nk, N}, D, E) where {T, nx, nu, ncxu, ncxuN, nk, N}    
     ΔV_1 = 0
     ΔV_2 = 0
     ec.Vxx_list[N] .= E[N].Q
@@ -422,7 +422,7 @@ function ecLQR_backward_Jan!(ec::ecLQR{T, nx, nu, ncxu, ncxuN, nk, N}, D, E) whe
 end
 
 # Zac's new derivation 0512
-function ecLQR_backward_Zac!(ec::ecLQR{T, nx, nu, ncxu, ncxuN, nk, N}, D, E) where {T, nx, nu, ncxu, ncxuN, nk, N}    ΔV = 0
+function ecLQR_backward_Zac!(ec::ecLQR{T, nx, nu, ncxu, ncxuN, nk, N}, D, E) where {T, nx, nu, ncxu, ncxuN, nk, N}    
     ΔV_1::Float64 = 0
     ΔV_2::Float64 = 0
     ec.Vxx_list[N] .= E[N].Q
@@ -462,6 +462,9 @@ function ecLQR_backward_Zac!(ec::ecLQR{T, nx, nu, ncxu, ncxuN, nk, N}, D, E) whe
             mul!(ec.tmp_nxnu[1], Vxx, B)  # Vxx*B 
             mul!(ec.tmp_nunu[1], Transpose(B), ec.tmp_nxnu[1], 1.0, 1.0)  # R+B'*Vxx*B
             ec.M[1:nu,1:nu] .= ec.tmp_nunu[1]
+            # U,S,V = svd(ec.tmp_nunu[1])
+            # println("----------")
+            # println(minimum(S))
 
             mul!(ec.tmp_nxncxu[1], Vxx, C)  # Vxx*C 
             mul!(ec.tmp_nuncxu[1], Transpose(B), ec.tmp_nxncxu[1])  # B'Vxx*C 
@@ -478,6 +481,15 @@ function ecLQR_backward_Zac!(ec::ecLQR{T, nx, nu, ncxu, ncxuN, nk, N}, D, E) whe
             ec.M[idx2:idx3,idx4:idx5] .= ec.tmp_ncxuncxu[1]
             ec.M[idx4:idx5,idx2:idx3] .= Transpose(ec.tmp_ncxuncxu[1])
 
+            mul!(ec.tmp_ncxuncxu[3], Transpose(C), ec.tmp_nxncxu[1])   # C'Vxx*C
+            _,S,_ = svd(ec.tmp_ncxuncxu[3])
+            min_sigular_value = minimum(S)
+            if (min_sigular_value<=0)
+                β = -min_sigular_value + 1e-9
+            else
+                β = 0.0
+            end
+
             ec.tmp_ncxuncxu[1] .= 0
             for j=1:ncxu
                 ec.tmp_ncxuncxu[1][j,j] = 1.0
@@ -488,6 +500,8 @@ function ecLQR_backward_Zac!(ec::ecLQR{T, nx, nu, ncxu, ncxuN, nk, N}, D, E) whe
             ec.tmp_ncxuncxu[2] .= ec.tmp_ncxuncxu[1]   # β*I(ncxu)
             mul!(ec.tmp_ncxuncxu[2], Transpose(C), ec.tmp_nxncxu[1], 1.0, 1.0)  # β*I(ncxu) + C'Vxx*C
             ec.M[idx2:idx3,idx2:idx3] .= ec.tmp_ncxuncxu[2]
+
+
 
             ec.tmp_ncxuncxu[1] .*= -1.0
             ec.M[idx4:idx5,idx4:idx5] .= ec.tmp_ncxuncxu[1]   # -β*I(ncxu)
