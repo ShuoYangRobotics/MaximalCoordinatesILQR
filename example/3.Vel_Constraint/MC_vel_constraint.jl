@@ -8,8 +8,8 @@ include("../../src/MC_floatingBase.jl")
 Tf = 0.5
 dt = 0.005
 N = Int(Tf/dt)
-ArmNumber = 1
-
+ArmNumber = 3
+vMax = 5.0
 """Generate model"""
 MCmodel = FloatingSpaceOrth(ArmNumber)
 
@@ -17,7 +17,7 @@ MCmodel = FloatingSpaceOrth(ArmNumber)
 test_dyn()
 
 # put solve steps in function 
-function solve_altro_test(model, N, dt)
+function solve_altro_test(model, N, dt, vmax)
     # trajectory 
     tf = (N-1)*dt           # final time
     n,m = size(model)
@@ -31,9 +31,9 @@ function solve_altro_test(model, N, dt)
 
     # objective
     Qf = Diagonal(@SVector fill(550., n))
-    Q = Diagonal(@SVector fill(1e-2, n))
-    R = Diagonal(@SVector fill(1e-3, m))
-    costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf); w=1e-1) for i=1:N]
+    Q = Diagonal(@SVector fill(1e-1, n))
+    R = Diagonal(@SVector fill(1e-4, m))
+    costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf); w=1) for i=1:N]
     costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(xf); w=550.0)
     obj = Objective(costfuns);
 
@@ -43,7 +43,6 @@ function solve_altro_test(model, N, dt)
     
     # limit the velocity of the last link 
     # index of the last link
-    vmax = 3.0
     statea_inds!(model, model.nb+1)
     p = 3
     A = zeros(p,n+m)
@@ -68,18 +67,19 @@ function solve_altro_test(model, N, dt)
         static_bp=0, 
         square_root = true,
         iterations=150, bp_reg=true,
+        constraint_force_reg = 0.0,
+        line_search_coefficient = 2.0,
         dJ_counter_limit = 1,
         iterations_inner = 30,
         cost_tolerance=1e-4, constraint_tolerance=1e-4)
     altro = ALTROSolver(prob, opts)
     set_options!(altro, show_summary=true)
     solve!(altro);
-    aa = 1;
     return altro
 end
-altro = solve_altro_test(MCmodel, N, dt)
+altro = solve_altro_test(MCmodel, N, dt, vMax)
 # run it twice to get execution time
-altro = solve_altro_test(MCmodel, N, dt)
+altro = solve_altro_test(MCmodel, N, dt, vMax)
 
 """Visualization"""
 n,m = size(MCmodel)
@@ -104,7 +104,7 @@ view_sequence(MCmodel, Xfinal_list)
 
 using Plots
 result_path = "results/3.vel_constraint/"
-file_name = "MC_vel_constraint_"*string(ArmNumber)*"Arms"*"_8"
+file_name = "MC_vel_constraint_"*string(ArmNumber)*"Arms_"*string(Int(floor(vMax)))
 
 # plot velocity of the last link
 statea_inds!(MCmodel, MCmodel.nb+1)
