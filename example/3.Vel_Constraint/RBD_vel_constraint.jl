@@ -11,12 +11,12 @@ Tf = 0.5
 dt = 0.005
 N = Int(Tf/dt)
 ArmNumber = 3
-
+vMax = 5.0
 """Generate model"""
 RBDmodel = FloatingSpaceOrthRBD(ArmNumber)
 
 """Run Altro"""
-function solve_altro_test(RBDmodel, dt, N)
+function solve_altro_test(RBDmodel, dt, N, vmax)
     n,m = size(RBDmodel)
     n̄ = state_diff_size(RBDmodel)
     # trajectory 
@@ -57,7 +57,7 @@ function solve_altro_test(RBDmodel, dt, N)
     # constraints
     # Create Empty ConstraintList
     conSet = ConstraintList(n,m,N)
-    vel_limit = EFVConstraint(n,m,RBDmodel,5.0, TO.Inequality())
+    vel_limit = EFVConstraint(n,m,RBDmodel,vmax, TO.Inequality())
     add_constraint!(conSet, vel_limit, 1:N-1)
     
     # problem
@@ -77,9 +77,9 @@ function solve_altro_test(RBDmodel, dt, N)
     solve!(altro);
     return altro
 end
-altro = solve_altro_test(RBDmodel, dt, N)
+altro = solve_altro_test(RBDmodel, dt, N, vMax)
 # run it twice to get execution time
-altro = solve_altro_test(RBDmodel, dt, N)
+altro = solve_altro_test(RBDmodel, dt, N, vMax)
 
 """Visualization"""
 n,m = size(RBDmodel)
@@ -97,7 +97,7 @@ view_sequence(RBDmodel, qs, vs)
 
 using Plots
 result_path = "results/3.vel_constraint/"
-file_name = "RBD_vel_constraint_"*string(ArmNumber)*"Arms"
+file_name = "RBD_vel_constraint_"*string(ArmNumber)*"Arms_"*string(Int(floor(vMax)))
 
 # plot velocity of the last link 
 velocity_list = zeros(N,3)

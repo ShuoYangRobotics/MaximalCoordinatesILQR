@@ -8,7 +8,7 @@ include("../../src/RBD_floatingBase.jl")
 Tf = 0.5
 dt = 0.005
 N = Int(Tf/dt)
-ArmNumber = 12
+ArmNumber = 4
 
 """Generate model"""
 RBDmodel = FloatingSpaceOrthRBD(ArmNumber)
@@ -99,7 +99,7 @@ plot(1:N, velocity_list,title = "End Effector velocity", labels = ["x" "y" "z"],
 xlabel!("Time step")
 ylabel!("World frame velocity")
 savefig(result_path*file_name)
-
+Max_vel = max(abs.(velocity_list)...)
 # save altro stats
 using JLD
 save(result_path*file_name*".jld", 
@@ -108,5 +108,6 @@ save(result_path*file_name*".jld",
     "Total_iter", altro.stats.iterations,
     "Solve_time", altro.stats.tsolve,
     "Cost_hist", altro.stats.cost,
-    "Solve_status", altro.stats.status)
+    "Solve_status", altro.stats.status,
+    "Max_vel", Max_vel)
 Solve_status = load(result_path*file_name*".jld", "Solve_status")

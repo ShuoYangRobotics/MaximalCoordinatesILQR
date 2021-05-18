@@ -118,21 +118,17 @@ struct FloatingSpaceRBD{T} <: LieGroupModel
             RBD.attach!(FloatingSpaceRobot, link[idx-1], link[idx], joint[idx], joint_pose = joint_pose)
         end
 
-        Blist = MRB.ScrewToAxis([-arm_length*(nb - 0.5); 0; 0], joint_directions[1], 0)'
-        if nb >= 2
-            for idx = 2:nb
-                Blist = vcat(Blist, MRB.ScrewToAxis([-arm_length*(nb - idx + 0.5); 0; 0], joint_directions[idx], 0)')
-            end
+        Blist = zeros(6,nb) 
+        Blist[:,1] .= MRB.ScrewToAxis([-arm_length*(nb - 0.5); 0; 0], joint_directions[1], 0)
+        for idx = 2:nb
+            Blist[:, idx] .= MRB.ScrewToAxis([-arm_length*(nb - idx + 0.5); 0; 0], joint_directions[idx], 0)
         end
-        Blist = Blist'
         
-        Slist = MRB.ScrewToAxis([body_size/2; 0; 0], joint_directions[1], 0)'
-        if nb >= 2
-            for idx = 2:nb
-                Slist = vcat(Slist, MRB.ScrewToAxis([body_size/2 + arm_length*(idx-1); 0; 0], joint_directions[idx], 0)')
-            end
+        Slist = zeros(6,nb) 
+        Slist[:,1] .= MRB.ScrewToAxis([body_size/2; 0; 0], joint_directions[1], 0)
+        for idx = 2:nb
+            Slist[:, idx] .= MRB.ScrewToAxis([body_size/2 + arm_length*(idx-1); 0; 0], joint_directions[idx], 0)
         end
-        Slist = Slist'
 
         M = []
 
