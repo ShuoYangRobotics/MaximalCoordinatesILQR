@@ -35,7 +35,7 @@ struct FloatingSpaceRBD{T} <: LieGroupModel
     nb::Integer     # number of arm links, total rigid bodies in the system will be nb+1
     Slist::AbstractMatrix 
     Blist::AbstractMatrix 
-    M::AbstractMatrix 
+    M::Vector{AbstractMatrix} # every arm_link has a home position 
     tree::RigidBodyDynamics.Mechanism{Float64}
     function FloatingSpaceRBD{T}(nb, joint_directions) where {T<:Real} 
         g = 0      # in space, no gravity!
@@ -134,10 +134,14 @@ struct FloatingSpaceRBD{T} <: LieGroupModel
         end
         Slist = Slist'
 
-        M =[1  0  0  body_size/2 + arm_length*(nb - 0.5) ;
-            0  1  0  0 ;
-            0  0  1  0 ;
-            0  0  0  1 ];
+        M = []
+
+        for idx=1:nb
+            push!(M, [1  0  0  body_size/2 + arm_length*(idx - 0.5) ;
+                0  1  0  0 ;
+                0  0  1  0 ;
+                0  0  0  1 ]);
+        end
 
         new(body_mass,
             body_size,
@@ -306,25 +310,6 @@ function view_sequence(model::FloatingSpaceRBD, qs, vs)
 end
 
 
-"""Constants"""
-struct EFVConstraint{S,W,T} <: TO.StageConstraint
-	n::Int
-	m::Int
-	model::FloatingSpaceRBD{T}
-    maxV::Float64
-	sense::S
-    inds::SVector{W, Int}
-	function EFVConstraint(n::Int, m::Int, model::FloatingSpaceRBD{T}, maxV::Float64,
-			sense::TO.ConstraintSense, inds=1:n+m) where {W, T}
-        inds = SVector{m+n}(inds)
-		new{typeof(sense),n+m,T}(n,m,model,maxV,sense,inds)
-	end
-end
-TO.sense(con::EFVConstraint) = con.sense
-TO.state_dim(con::EFVConstraint) = con.n
-TO.control_dim(con::EFVConstraint) = con.m
-@inline Base.length(con::EFVConstraint{S,T}) where {S,T} = 6   # v<vmax , v>vmin
-
 #my own quaternion to rotation matrix function because I am afraid Rotations.jl will perform weiredly during ForwardDiff
 function q_to_rot(Q::AbstractVector{T}) where T # q must be 4-array
     q0 = Q[1]
@@ -357,7 +342,7 @@ function world_vel(model::FloatingSpaceRBD{T}, z::AbstractVector{P}) where {T, P
     thetalist = x[iθ]
     ϕlist = x[iϕ]
 
-    fk = MRB.FKinSpace(model.M, model.Slist, thetalist)
+    fk = MRB.FKinSpace(model.M[model.nb], model.Slist, thetalist)
 
     body_frame_vel = (MRB.JacobianBody(model.Blist, thetalist)*ϕlist)[4:6]
     base_frame_vel = fk[1:3,1:3] * body_frame_vel
@@ -365,6 +350,38 @@ function world_vel(model::FloatingSpaceRBD{T}, z::AbstractVector{P}) where {T, P
 
     return world_frame_vel
 end
+
+# extract link world pos 
+function arm_world_pos(model::FloatingSpaceRBD{T}, z::AbstractVector{P}, link_id::Int)  where {T, P}
+    # TODO: check link_id >=1 <=nb
+    iq, ix, iθ, iω, iv, iϕ = state_parts(model)
+    n,m=size(model)
+    x = z[1:n]
+    thetalist = x[iθ]
+
+    fk = MRB.FKinSpace(model.M[link_id], model.Slist[:,1:link_id], thetalist[1:link_id])
+    pos = fk[1:3,4] + x[ix]
+    return pos
+end
+
+"""Constraint"""
+struct EFVConstraint{S,W,T} <: TO.StageConstraint
+	n::Int
+	m::Int
+	model::FloatingSpaceRBD{T}
+    maxV::Float64
+	sense::S
+    inds::SVector{W, Int}
+	function EFVConstraint(n::Int, m::Int, model::FloatingSpaceRBD{T}, maxV::Float64,
+			sense::TO.ConstraintSense, inds=1:n+m) where {W, T}
+        inds = SVector{m+n}(inds)
+		new{typeof(sense),n+m,T}(n,m,model,maxV,sense,inds)
+	end
+end
+TO.sense(con::EFVConstraint) = con.sense
+TO.state_dim(con::EFVConstraint) = con.n
+TO.control_dim(con::EFVConstraint) = con.m
+@inline Base.length(con::EFVConstraint{S,T}) where {S,T} = 6   # v<vmax , v>vmin
 
 function TO.evaluate(con::EFVConstraint{S,T}, z::AbstractKnotPoint) where {S,T}
     v = world_vel(con.model, [state(z);control(z)])
@@ -385,3 +402,52 @@ function TO.jacobian!(∇c, con::EFVConstraint{S,T}, z::AbstractKnotPoint) where
 end
 # asuume gauss newton
 TO.∇jacobian!(G, con::EFVConstraint{S,T}, z::AbstractKnotPoint, λ::AbstractVector) where {S,T} = true # zeros
+
+
+
+struct LinkPosConstraint{S,W,T} <: TO.StageConstraint
+	n::Int
+	m::Int
+    p::Int   # size of the constraint 
+	model::FloatingSpaceRBD{T}
+    max_pos::Array{Float64,1}
+    min_pos::Array{Float64,1}
+	sense::S
+    inds::SVector{W, Int}
+	function LinkPosConstraint(n::Int, m::Int, model::FloatingSpaceRBD{T}, max_pos::Array{Float64,1}, min_pos::Array{Float64,1},
+			sense::TO.ConstraintSense, inds=1:n+m) where {W, T}
+        inds = SVector{m+n}(inds)
+        p = 3*model.nb*2
+		new{typeof(sense),n+m,T}(n, m, p, model, max_pos, min_pos, sense, inds)
+	end
+end
+TO.sense(con::LinkPosConstraint) = con.sense
+TO.state_dim(con::LinkPosConstraint) = con.n
+TO.control_dim(con::LinkPosConstraint) = con.m
+@inline Base.length(con::LinkPosConstraint{S,T}) where {S,T} = con.p   # each link pos is 3, then min_pos < pos < max_pos
+
+function TO.evaluate(con::LinkPosConstraint{S,W,T}, z::AbstractKnotPoint) where {S,W,T}
+    con_val = zeros(T,con.p)
+    for idx=1:con.model.nb
+        pos = arm_world_pos(con.model, [state(z);control(z)], idx)
+        con_val[6*(idx-1).+(1:3)] = pos.-con.max_pos[3*(idx-1).+(1:3)] 
+        con_val[6*(idx-1).+(4:6)] = (-pos).+con.min_pos[3*(idx-1).+(1:3)] 
+    end
+    return con_val   #  Inequality  should all smaller than 0
+end
+
+# dim should be 6 x size(z)
+function TO.jacobian!(∇c, con::LinkPosConstraint{S,T}, z::AbstractKnotPoint) where {S,T}
+
+    for idx=1:con.model.nb
+        posaug(k) = arm_world_pos(con.model, k, idx)
+        Jpos = ForwardDiff.jacobian(posaug,[state(z);control(z)])
+
+        ∇c[6*(idx-1).+(1:3),:] .= Jpos
+        ∇c[6*(idx-1).+(4:6),:] .= -Jpos
+    end
+
+	return true
+end
+# asuume gauss newton
+TO.∇jacobian!(G, con::LinkPosConstraint{S,T}, z::AbstractKnotPoint, λ::AbstractVector) where {S,T} = true # zeros
