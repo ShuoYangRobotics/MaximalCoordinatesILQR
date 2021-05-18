@@ -8,7 +8,7 @@ include("../../src/MC_floatingBase.jl")
 Tf = 0.5
 dt = 0.005
 N = Int(Tf/dt)
-ArmNumber = 3
+ArmNumber = 1
 
 """Generate model"""
 MCmodel = FloatingSpaceOrth(ArmNumber)
@@ -31,9 +31,9 @@ function solve_altro_test(model, N, dt)
 
     # objective
     Qf = Diagonal(@SVector fill(550., n))
-    Q = Diagonal(@SVector fill(1e-2, n))
-    R = Diagonal(@SVector fill(1e-3, m))
-    costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf); w=1e-1) for i=1:N]
+    Q = Diagonal(@SVector fill(1e-1, n))
+    R = Diagonal(@SVector fill(1e-4, m))
+    costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf); w=1) for i=1:N]
     costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(xf); w=550.0)
     obj = Objective(costfuns);
 
@@ -50,13 +50,14 @@ function solve_altro_test(model, N, dt)
         static_bp=0, 
         square_root = true,
         iterations=150, bp_reg=true,
+        constraint_force_reg = 0.0,
+        line_search_coefficient = 2.0,
         dJ_counter_limit = 1,
         iterations_inner = 30,
         cost_tolerance=1e-4, constraint_tolerance=1e-4)
     altro = ALTROSolver(prob, opts)
     set_options!(altro, show_summary=true)
     solve!(altro);
-    aa = 1;
     return altro
 end
 altro = solve_altro_test(MCmodel, N, dt)
@@ -99,6 +100,8 @@ xlabel!("Time step")
 ylabel!("World frame velocity")
 savefig(result_path*file_name)
 
+Max_vel = max(abs.(p)...)
+
 # save altro stats
 using JLD
 save(result_path*file_name*".jld", 
@@ -107,5 +110,6 @@ save(result_path*file_name*".jld",
     "Total_iter", altro.stats.iterations,
     "Solve_time", altro.stats.tsolve,
     "Cost_hist", altro.stats.cost,
-    "Solve_status", altro.stats.status)
+    "Solve_status", altro.stats.status,
+    "Max_vel", Max_vel)
 Solve_status = load(result_path*file_name*".jld", "Solve_status")
