@@ -11,12 +11,13 @@ Tf = 0.5
 dt = 0.005
 N = Int(Tf/dt)
 ArmNumber = 3
+link_pos_z_constraint = -0.5
 
 """Generate model"""
 RBDmodel = FloatingSpaceOrthRBD(ArmNumber)
 
 """Run Altro"""
-function solve_altro_test(RBDmodel, dt, N)
+function solve_altro_test(RBDmodel, dt, N, link_pos_z_constraint)
     n,m = size(RBDmodel)
     n̄ = state_diff_size(RBDmodel)
     # trajectory 
@@ -58,7 +59,7 @@ function solve_altro_test(RBDmodel, dt, N)
     # Create Empty ConstraintList
     conSet = ConstraintList(n,m,N)
     max_pos = repeat([10.0,10.0,10.0],RBDmodel.nb)
-    min_pos = repeat([-10.0,-10.0,-0.5],RBDmodel.nb)
+    min_pos = repeat([-10.0,-10.0,link_pos_z_constraint],RBDmodel.nb)
     pos_limit = LinkPosConstraint(n,m, RBDmodel,max_pos,min_pos, TO.Inequality())
     # z = KnotPoint(x0,U0,0.005)
     # TO.evaluate(pos_limit, z)
@@ -84,9 +85,9 @@ function solve_altro_test(RBDmodel, dt, N)
     solve!(altro);
     return altro
 end
-altro = solve_altro_test(RBDmodel, dt, N)
+altro = solve_altro_test(RBDmodel, dt, N,link_pos_z_constraint)
 # run it twice to get execution time
-altro = solve_altro_test(RBDmodel, dt, N)
+altro = solve_altro_test(RBDmodel, dt, N,link_pos_z_constraint)
 
 """Visualization"""
 n,m = size(RBDmodel)
@@ -106,20 +107,29 @@ using Plots
 result_path = "results/4.pos_constraint/"
 file_name = "RBD_pos_constraint_"*string(ArmNumber)*"Arms"
 
-# plot velocity of the last link 
-pos_list = zeros(N,3*RBDmodel.nb)
+# plot z - pos of all arm links
+pos_list = zeros(N,RBDmodel.nb+1)
 for idx=1:N
     for link = 1:RBDmodel.nb
-        pos_list[idx,3*(link-1).+(1:3)] .= arm_world_pos(RBDmodel, [X_list[idx];zeros(m)], link) 
+        # pos_list[idx,3*(link-1).+(1:3)] .= arm_world_pos(RBDmodel, [X_list[idx];zeros(m)], link) 
+        pos = arm_world_pos(RBDmodel, [X_list[idx];zeros(m)], link) 
+        pos_list[idx,link] = pos[3]
     end
+    pos_list[idx,RBDmodel.nb+1] = link_pos_z_constraint
 end
-label_list = [string(1)*"x" string(1)*"y" string(1)*"z"]
+# label_list = [string(1)*"x" string(1)*"y" string(1)*"z"]
+# for link=2:RBDmodel.nb
+#     label_list = hcat(label_list, string(link)*"x")
+#     label_list = hcat(label_list, string(link)*"y")
+#     label_list = hcat(label_list, string(link)*"z")
+# end
+
+label_list = [string(1)*"z"]
 for link=2:RBDmodel.nb
-    label_list = hcat(label_list, string(link)*"x")
-    label_list = hcat(label_list, string(link)*"y")
     label_list = hcat(label_list, string(link)*"z")
 end
-plot(1:N, pos_list,title = "link positions", labels = label_list,fmt = :png)
+label_list = hcat(label_list, "z constraint ")
+plot(1:N, pos_list,title = "link z positions", labels = label_list,fmt = :png)
 xlabel!("Time step")
 ylabel!("World frame position")
 savefig(result_path*file_name)
