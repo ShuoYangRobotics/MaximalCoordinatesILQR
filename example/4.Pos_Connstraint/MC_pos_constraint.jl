@@ -9,7 +9,7 @@ Tf = 0.5
 dt = 0.005
 N = Int(Tf/dt)
 ArmNumber = 3
-link_pos_z_constraint = -0.0
+link_pos_z_constraint = -2.04
 
 """Generate model"""
 MCmodel = FloatingSpaceOrth(ArmNumber)
@@ -90,44 +90,81 @@ X_list = states(altro)
 U_list = controls(altro)
 
 # a final simulation pass to get "real" state trajectory
-λ_init = zeros(5*MCmodel.nb)
-λ = λ_init
-Xfinal_list = copy(X_list)
-Xfinal_list[1] = SVector{n}(X_list[1])
-mech = vis_mech_generation(MCmodel)
-for idx = 1:N-1
-    x1, λ1 = discrete_dynamics(MCmodel,Xfinal_list[idx], U_list[idx], λ, dt)
-    setStates!(MCmodel,mech,x1)
-    Xfinal_list[idx+1] = SVector{n}(x1)
-    λ = λ1
-end
-view_sequence(MCmodel, Xfinal_list)
+# λ_init = zeros(5*MCmodel.nb)
+# λ = λ_init
+# Xfinal_list = copy(X_list)
+# Xfinal_list[1] = SVector{n}(X_list[1])
+# mech = vis_mech_generation(MCmodel)
+# for idx = 1:N-1
+#     x1, λ1 = discrete_dynamics(MCmodel,Xfinal_list[idx], U_list[idx], λ, dt)
+#     setStates!(MCmodel,mech,x1)
+#     Xfinal_list[idx+1] = SVector{n}(x1)
+#     λ = λ1
+# end
+# view_sequence(MCmodel, Xfinal_list)
 
 """Plot and save results"""
 
 using Plots
+using Plots.PlotMeasures
 result_path = "results/4.pos_constraint/"
-file_name = "MC_pos_constraint_"*string(ArmNumber)*"Arms"*"_8"
 
-# plot z - pos of all arm links
-pos_list = zeros(N,MCmodel.nb+1)
-for idx=1:N
-    for link = 1:MCmodel.nb
-        statea_inds!(MCmodel, link+1)
-        pos_list[idx,link] = X_list[idx][MCmodel.r_ainds[3]]
+if (link_pos_z_constraint<-1)
+    # no constraint
+    file_name = "MC_pos_no_constraint_"*string(ArmNumber)*"Arms.pdf"
+
+    # plot z - pos of all arm links
+    pos_list = zeros(N,MCmodel.nb)
+    for idx=1:N
+        for link = 1:MCmodel.nb
+            statea_inds!(MCmodel, link+1)
+            pos_list[idx,link] = X_list[idx][MCmodel.r_ainds[3]]
+        end
     end
-    pos_list[idx,MCmodel.nb+1] = link_pos_z_constraint
-end
 
-label_list = [string(1)*"z"]
-for link=2:MCmodel.nb
-    label_list = hcat(label_list, string(link)*"z")
+    label_list = [string(1)*"z"]
+    for link=2:MCmodel.nb
+        label_list = hcat(label_list, string(link)*"z")
+    end
+    mytitle ="Maximal, link z positions with no constraint"
+    plot(1:N, pos_list,title = mytitle, labels = label_list,fmt = :eps, legend=:topleft,
+    size = (720, 350),
+    bottom_margin = 3mm,
+    top_margin = 3mm,
+    left_margin = 3mm,
+    xlabel = "Time steps", ylabel = "World frame position")
+else
+    # with constraint
+    file_name = "MC_pos_constraint_"*string(ArmNumber)*"Arms.pdf"
+
+    # plot z - pos of all arm links
+    pos_list = zeros(N,MCmodel.nb+1)
+    for idx=1:N
+        for link = 1:MCmodel.nb
+            statea_inds!(MCmodel, link+1)
+            pos_list[idx,link] = X_list[idx][MCmodel.r_ainds[3]]
+        end
+        pos_list[idx,MCmodel.nb+1] = link_pos_z_constraint
+    end
+
+    label_list = [string(1)*"z"]
+    for link=2:MCmodel.nb
+        label_list = hcat(label_list, string(link)*"z")
+    end
+    label_list = hcat(label_list, "z constraint ")
+    mytitle ="Maximal, link z positions with constraint > "*string(link_pos_z_constraint)*"\n Final constraint violation 0.0"
+
+    plot(1:N, pos_list,title = mytitle, labels = label_list,fmt = :eps, legend=:topleft,
+         size = (720, 350),
+         bottom_margin = 3mm,
+         top_margin = 3mm,
+         left_margin = 3mm,
+         xlabel = "Time steps", ylabel = "World frame position")
 end
-label_list = hcat(label_list, "z constraint ")
-plot(1:N, pos_list,title = "Maximal Coordinate iLQR link z positions", labels = label_list,fmt = :png)
-xlabel!("Time step")
-ylabel!("World frame velocity")
 savefig(result_path*file_name)
+
+
+
 
 # save altro stats
 using JLD

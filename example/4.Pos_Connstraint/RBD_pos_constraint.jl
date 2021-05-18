@@ -11,7 +11,7 @@ Tf = 0.5
 dt = 0.005
 N = Int(Tf/dt)
 ArmNumber = 3
-link_pos_z_constraint = -0.05
+link_pos_z_constraint = -2.4
 
 """Generate model"""
 RBDmodel = FloatingSpaceOrthRBD(ArmNumber)
@@ -87,7 +87,7 @@ function solve_altro_test(RBDmodel, dt, N, link_pos_z_constraint)
 end
 altro = solve_altro_test(RBDmodel, dt, N,link_pos_z_constraint)
 # run it twice to get execution time
-altro = solve_altro_test(RBDmodel, dt, N,link_pos_z_constraint)
+# altro = solve_altro_test(RBDmodel, dt, N,link_pos_z_constraint)
 
 """Visualization"""
 n,m = size(RBDmodel)
@@ -99,40 +99,70 @@ for idx = 1:N
     push!(qs,X_list[idx][1:(7 + ArmNumber)])
     push!(vs,X_list[idx][(8 + ArmNumber):end])
 end
-view_sequence(RBDmodel, qs, vs)
+# view_sequence(RBDmodel, qs, vs)
 
 """Plot and save results"""
 
 using Plots
+using Plots.PlotMeasures
 result_path = "results/4.pos_constraint/"
-file_name = "RBD_pos_constraint_"*string(ArmNumber)*"Arms"
-
-# plot z - pos of all arm links
-pos_list = zeros(N,RBDmodel.nb+1)
-for idx=1:N
-    for link = 1:RBDmodel.nb
-        # pos_list[idx,3*(link-1).+(1:3)] .= arm_world_pos(RBDmodel, [X_list[idx];zeros(m)], link) 
-        pos = arm_world_pos(RBDmodel, [X_list[idx];zeros(m)], link) 
-        pos_list[idx,link] = pos[3]
+gr(size = (720, 450))
+if (link_pos_z_constraint<-1)
+    # no constraint
+    file_name = "RBD_pos_no_constraint_"*string(ArmNumber)*"Arms.pdf"
+    # plot z - pos of all arm links
+    pos_list = zeros(N,RBDmodel.nb)
+    for idx=1:N
+        for link = 1:RBDmodel.nb
+             pos = arm_world_pos(RBDmodel, [X_list[idx];zeros(m)], link) 
+            pos_list[idx,link] = pos[3]
+        end
     end
-    pos_list[idx,RBDmodel.nb+1] = link_pos_z_constraint
-end
-# label_list = [string(1)*"x" string(1)*"y" string(1)*"z"]
-# for link=2:RBDmodel.nb
-#     label_list = hcat(label_list, string(link)*"x")
-#     label_list = hcat(label_list, string(link)*"y")
-#     label_list = hcat(label_list, string(link)*"z")
-# end
 
-label_list = [string(1)*"z"]
-for link=2:RBDmodel.nb
-    label_list = hcat(label_list, string(link)*"z")
+    label_list = ["link "*string(1)*" z pos"]
+    for link=2:RBDmodel.nb
+        label_list = hcat(label_list, "link "*string(link)*" z pos")
+    end
+    mytitle ="Minimal, link z positions with no constraint"
+    plot(1:N, pos_list,title = mytitle, labels = label_list,fmt = :eps, legend=:topleft,
+    size = (720, 350),
+    bottom_margin = 3mm,
+    top_margin = 3mm,
+    left_margin = 3mm,
+    xlabel = "Time steps", ylabel = "World frame position")
+
+else
+    # with constraint
+    file_name = "RBD_pos_constraint_"*string(ArmNumber)*"Arms.pdf"
+    # plot z - pos of all arm links
+    pos_list = zeros(N,RBDmodel.nb+1)
+    for idx=1:N
+        for link = 1:RBDmodel.nb
+            # pos_list[idx,3*(link-1).+(1:3)] .= arm_world_pos(RBDmodel, [X_list[idx];zeros(m)], link) 
+            pos = arm_world_pos(RBDmodel, [X_list[idx];zeros(m)], link) 
+            pos_list[idx,link] = pos[3]
+        end
+        pos_list[idx,RBDmodel.nb+1] = link_pos_z_constraint
+    end
+
+    label_list = ["link "*string(1)*" z pos"]
+    for link=2:RBDmodel.nb
+        label_list = hcat(label_list, "link "*string(link)*" z pos")
+    end
+    label_list = hcat(label_list, "z constraint ")
+    
+    mytitle ="Minimal, link z positions with constraint > "*string(link_pos_z_constraint)*"\n Final constraint violation 1.9774e-5"
+
+    plot(1:N, pos_list,title = mytitle, labels = label_list,fmt = :eps, legend=:topleft,
+         size = (720, 350),
+         bottom_margin = 3mm,
+         top_margin = 3mm,
+         left_margin = 3mm,
+         xlabel = "Time steps", ylabel = "World frame position")
 end
-label_list = hcat(label_list, "z constraint ")
-plot(1:N, pos_list,title = "Minimal Coordinate iLQR link z positions", labels = label_list,fmt = :png)
-xlabel!("Time step")
-ylabel!("World frame position")
-savefig(result_path*file_name)
+
+
+savefig(result_path*file_name,)
 
 # save altro stats
 using JLD
