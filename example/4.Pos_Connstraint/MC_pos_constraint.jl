@@ -9,7 +9,7 @@ Tf = 0.5
 dt = 0.005
 N = Int(Tf/dt)
 ArmNumber = 3
-link_pos_z_constraint = -0.1
+link_pos_z_constraint = -0.0
 
 """Generate model"""
 MCmodel = FloatingSpaceOrth(ArmNumber)
@@ -31,8 +31,8 @@ function solve_altro_test(model, N, dt,link_pos_z_constraint)
     xf = generate_config(model, [0.3;0.3;1.0;pi/4], fill.(pi/6,model.nb))
 
     # objective
-    Qf = Diagonal(@SVector fill(550., n))
-    Q = Diagonal(@SVector fill(1e-1, n))
+    Qf = Diagonal(@SVector fill(450., n))
+    Q = Diagonal(@SVector fill(1e-2, n))
     R = Diagonal(@SVector fill(1e-4, m))
     costfuns = [TO.LieLQRCost(RD.LieState(model), Q, R, SVector{n}(xf); w=1) for i=1:N]
     costfuns[end] = TO.LieLQRCost(RD.LieState(model), Qf, R, SVector{n}(xf); w=550.0)
@@ -57,11 +57,11 @@ function solve_altro_test(model, N, dt,link_pos_z_constraint)
         b2[3*(idx-2).+(1:3)] .= min_pos[3*(idx-2).+(1:3)]
     end
 
-    lin_upper = LinearConstraint(n,m,A,b, Inequality())
-    lin_lower = LinearConstraint(n,m,-A,-b2, Inequality())
+    lin_upper = LinearConstraint(n,m,A,b, TO.Inequality())
+    lin_lower = LinearConstraint(n,m,-A,-b2, TO.Inequality())
 
-    add_constraint!(conSet, lin_lower, 10:N-1)
-    add_constraint!(conSet, lin_upper, 10:N-1)
+    add_constraint!(conSet, lin_lower, 1:N-1)
+    add_constraint!(conSet, lin_upper, 1:N-1)
 
     to = TimerOutput()
     # problem
@@ -71,10 +71,10 @@ function solve_altro_test(model, N, dt,link_pos_z_constraint)
     opts = SolverOptions(verbose=7, 
         static_bp=0, 
         square_root = true,
-        iterations=150, bp_reg=true,
+        iterations=80, bp_reg=true,
         dJ_counter_limit = 1,
         iterations_inner = 30,
-        cost_tolerance=1e-4, constraint_tolerance=1e-4)
+        cost_tolerance=1e-4, constraint_tolerance=1e-9)
     altro = ALTROSolver(prob, opts)
     set_options!(altro, show_summary=true)
     solve!(altro);
@@ -82,7 +82,7 @@ function solve_altro_test(model, N, dt,link_pos_z_constraint)
 end
 altro = solve_altro_test(MCmodel, N, dt,link_pos_z_constraint)
 # run it twice to get execution time
-altro = solve_altro_test(MCmodel, N, dt,link_pos_z_constraint)
+# altro = solve_altro_test(MCmodel, N, dt,link_pos_z_constraint)
 
 """Visualization"""
 n,m = size(MCmodel)
@@ -114,7 +114,7 @@ pos_list = zeros(N,MCmodel.nb+1)
 for idx=1:N
     for link = 1:MCmodel.nb
         statea_inds!(MCmodel, link+1)
-        pos_list[idx,link] = Xfinal_list[idx][MCmodel.r_ainds[3]]
+        pos_list[idx,link] = X_list[idx][MCmodel.r_ainds[3]]
     end
     pos_list[idx,MCmodel.nb+1] = link_pos_z_constraint
 end
@@ -124,7 +124,7 @@ for link=2:MCmodel.nb
     label_list = hcat(label_list, string(link)*"z")
 end
 label_list = hcat(label_list, "z constraint ")
-plot(1:N, pos_list,title = "link z positions", labels = label_list,fmt = :png)
+plot(1:N, pos_list,title = "Maximal Coordinate iLQR link z positions", labels = label_list,fmt = :png)
 xlabel!("Time step")
 ylabel!("World frame velocity")
 savefig(result_path*file_name)

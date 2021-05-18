@@ -11,7 +11,7 @@ Tf = 0.5
 dt = 0.005
 N = Int(Tf/dt)
 ArmNumber = 3
-link_pos_z_constraint = -0.5
+link_pos_z_constraint = -0.05
 
 """Generate model"""
 RBDmodel = FloatingSpaceOrthRBD(ArmNumber)
@@ -46,9 +46,9 @@ function solve_altro_test(RBDmodel, dt, N, link_pos_z_constraint)
 
     # objective
     Qf = Diagonal(@SVector fill(550., n))
-    Q = Diagonal(@SVector fill(1e-2, n))
-    R = Diagonal(@SVector fill(1e-3, m))
-    costfuns = [TO.LieLQRCost(RobotDynamics.LieState(RBDmodel), Q, R, SVector{n}(xf); w=1e-1) for i=1:N]
+    Q = Diagonal(@SVector fill(1e-1, n))
+    R = Diagonal(@SVector fill(1e-4, m))
+    costfuns = [TO.LieLQRCost(RobotDynamics.LieState(RBDmodel), Q, R, SVector{n}(xf); w=1) for i=1:N]
     costfuns[end] = TO.LieLQRCost(RobotDynamics.LieState(RBDmodel), Qf, R, SVector{n}(xf); w=550.0)
     obj = Objective(costfuns);
 
@@ -78,7 +78,7 @@ function solve_altro_test(RBDmodel, dt, N, link_pos_z_constraint)
         iterations=1000, bp_reg=true,
         dJ_counter_limit = 1,
         iterations_inner = 30,
-        cost_tolerance=1e-4, constraint_tolerance=1e-4,
+        cost_tolerance=1e-4, constraint_tolerance=1e-8,
         show_summary=true)
     altro = ALTROSolver(prob, opts)
     set_options!(altro, show_summary=true)
@@ -129,7 +129,7 @@ for link=2:RBDmodel.nb
     label_list = hcat(label_list, string(link)*"z")
 end
 label_list = hcat(label_list, "z constraint ")
-plot(1:N, pos_list,title = "link z positions", labels = label_list,fmt = :png)
+plot(1:N, pos_list,title = "Minimal Coordinate iLQR link z positions", labels = label_list,fmt = :png)
 xlabel!("Time step")
 ylabel!("World frame position")
 savefig(result_path*file_name)
